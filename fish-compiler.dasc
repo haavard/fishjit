@@ -785,15 +785,19 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 | xchg rcx, [r_stacktop-9]
                 break;
             case '@':
-                /* rotate top three: pop x, y, z; push y, x, z */
-                /* xyz -> yzx */
+                /* rotate top three: pop x, y, z; push x, z, y */
+                /* xyz -> zxy */
                 | check_underflow, 3
+                /* reg = top */
                 | mov al, [r_stacktop-1]
                 | mov rcx, [r_stacktop-9]
-                | xchg al, [r_stacktop-10]
-                | xchg rcx, [r_stacktop-18]
+                /* reg = 3rd, 3rd = top */
                 | xchg al, [r_stacktop-19]
                 | xchg rcx, [r_stacktop-27]
+                /* reg = 2nd, 2nd = 3rd */
+                | xchg al, [r_stacktop-10]
+                | xchg rcx, [r_stacktop-18]
+                /* top = 2nd */
                 | xchg al, [r_stacktop-1]
                 | xchg rcx, [r_stacktop-9]
                 break;
