@@ -2,7 +2,7 @@ fishjit
 =======
 fishjit is a just-in-time compiler for the [><>][1] esoteric programming
 language. It is written in C using the [DynASM][2] dynamic assembler.
-Currently only supports the amd64 architecture.
+Currently only supports the amd64 architecture on Linux.
 
 Known limitations:
  - No i386 support
