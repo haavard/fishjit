@@ -12,6 +12,8 @@ Known limitations:
 
 Installation
 ------------
+[![Build Status](https://travis-ci.com/haavardp/fishjit.svg?token=q1REyqE9bXXeo3BE68D1&branch=master)](https://travis-ci.com/haavardp/fishjit)
+
 fishjit requires the [uthash][3] hash table library. DynASM is included via a
 git submodule.
 
