@@ -50,7 +50,7 @@ for script in $testdir/*.fish; do
 
     cmp $stdout $expected_stdout &>/dev/null
     if [ $? -ne 0 ]; then
-        echo -ne "\033[F\033[2K"
+        echo -ne "\e[F\e[2K"
 
         echo -e "${c_red}[Fail]${c_clear} wrong stdout for $name"
         echo "--- Expected: ---"
@@ -65,7 +65,7 @@ for script in $testdir/*.fish; do
     cmp $stderr $expected_stderr &>/dev/null
     if [ $? -ne 0 ]; then
         if ! [ "$fail" = yes ]; then
-            echo -ne "\033[F\033[2K"
+            echo -ne "\e[F\e[2K"
         fi
 
         echo -e "${c_red}[Fail]${c_clear} wrong stderr for $name"
@@ -80,7 +80,7 @@ for script in $testdir/*.fish; do
 
     if ! [ "$fail" = yes ]; then
         (( pass_count++ ))
-        echo -ne "\033[F\033[2K" # Back up and erase one line
+        echo -ne "\e[F\e[2K" # Back up and erase one line
         echo -e "${c_green}[Pass]${c_clear} $name"
     fi
 done
