@@ -1,4 +1,4 @@
 *.o
 *.d
-fish
+fishjit
 fish-compiler.c
