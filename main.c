@@ -20,6 +20,12 @@ int main(int argc, char *argv[])
     tcgetattr(fileno(stdout), &t);
     t.c_lflag &= ~ECHO;
     tcsetattr(fileno(stdout), TCSANOW, &t);
+    /* enable non-canonical input */
+    tcgetattr(fileno(stdin), &t);
+    t.c_lflag &= ~ICANON;
+    tcsetattr(fileno(stdin), TCSANOW, &t);
+    /* disable output buffering */
+    setbuf(stdout, NULL);
 
     /* validate command-line arguments */
     if (argc < 2)
@@ -84,8 +90,8 @@ int main(int argc, char *argv[])
 
         if (code == NULL)
         {
-            /* no code means it could not be assembled */
-            fputs("Syntax error\n", stderr);
+            /* no code means it could not be assembled (invalid instruction) */
+            fputs("something smells fishy...\n", stderr);
             exit(EXIT_FAILURE);
         }
         else
@@ -112,11 +118,10 @@ int main(int argc, char *argv[])
 
             /* execute code, updating state */
             int ret = code->entry(&state, stack);
-            fflush(NULL);
             if (ret != 0)
             {
                 fputs("something smells fishy...\n", stderr);
-                break;
+                exit(EXIT_FAILURE);
             }
         }
     }

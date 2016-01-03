@@ -866,6 +866,19 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 | call_extern printf
                 | postcall 2
                 break;
+            case 'i':
+                /* push a character from standard input */
+                | call_extern getchar
+                /* if EOF does not equal -1, make sure -1 is pushed on EOF */
+                if (EOF != -1)
+                {
+                    | cmp rax, EOF
+                    | jne >1
+                    | mov rax, -1
+                    |1:
+                }
+                | fish_push_reg rax
+                break;
             case ';':
                 /* end program */
                 | mov aword end_state->direction, FINISHED
@@ -896,9 +909,6 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
             addskip = false;
             |9:
         }
-
-        // | prepcall3 format_debug, instr, [r_stacktop-9]
-        // | call_extern printf
 
         /* increment instruction pointer */
         fish_next(&state, codebox);
