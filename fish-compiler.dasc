@@ -1,0 +1,925 @@
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
+
+#include <sys/mman.h>
+
+#include "dasm_proto.h"
+#include "dasm_x86.h"
+
+#include "fish-codebox.h"
+#include "fish-stack.h"
+#include "fish-runtime.h"
+
+#include "fish-compiler.h"
+
+/* used by 'n' instruction to invoke printf */
+static char *format_int = "%ld";
+static char *format_float = "%f";
+
+/* allocate a buffer and link/encode instructions, storing it into a struct */
+void fish_link_and_encode(dasm_State **Dst, struct fish_code *code)
+{
+    int ret;
+
+    /* link and get resulting code size */
+    if ((ret = dasm_link(Dst, &code->size)) != 0)
+    {
+        fprintf(stderr, "Could not link: dasm_link returned %d\n", ret);
+        exit(EXIT_FAILURE);
+    }
+
+    /* allocate writable buffer for code */
+    code->buffer = mmap(NULL, code->size,
+                        PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
+                        -1, 0);
+
+    if (code->buffer == MAP_FAILED)
+    {
+        perror("Could not map memory");
+        exit(EXIT_FAILURE);
+    }
+
+    /* encode instructions */
+    if ((ret = dasm_encode(Dst, code->buffer)) != 0)
+    {
+        fprintf(stderr, "Could not encode instructions: dasm_encode returned "
+                        "%d\n", ret);
+        exit(EXIT_FAILURE);
+    }
+
+    /* make buffer executable */
+    if (mprotect(code->buffer, code->size, PROT_READ | PROT_EXEC) != 0)
+    {
+        perror("Could not make memory executable");
+        exit(EXIT_FAILURE);
+    }
+}
+
+/* free DynASM state and other compiler structures */
+void fish_free_compiler(dasm_State **Dst, struct fish_state *seen_states)
+{
+    /* free DynASM state */
+    dasm_free(Dst);
+
+    /* free seen states hash table */
+    struct fish_state *state, *tmp;
+    HASH_ITER(hh, seen_states, state, tmp)
+    {
+        HASH_DEL(seen_states, state);
+        free(state);
+    }
+}
+
+void fish_free_code(struct fish_code *code)
+{
+    if (munmap(code->buffer, code->size) == -1)
+    {
+        perror("munmap");
+        exit(EXIT_FAILURE);
+    }
+
+    free(code);
+}
+
+struct fish_code *fish_compile(struct fish_codebox *codebox,
+                               struct fish_state state)
+{
+    /* setup DynASM state */
+    dasm_State *dasm_state;
+    dasm_State **Dst = &dasm_state;
+
+    |.if X64
+        |.arch x64
+    |.else
+        |.arch x86
+    |.endif
+
+    |.section code
+
+    dasm_init(Dst, DASM_MAXSECTION);
+
+    |.globals label
+    void *labels[label_MAX];
+    dasm_setupglobal(Dst, labels, label_MAX);
+
+    |.actionlist actions
+    dasm_setup(Dst, actions);
+
+    /* define registers, macros */
+    |.define r_x, r0 // rax/eax
+    |.define r_y, r2 // rdx/edx
+    |.define r_z, r1 // rcx/ecx
+
+    |.define r_ret, r0 // rax/eax
+    |.define r_arg1, r7 // rdi/edi
+    |.define r_arg2, r6 // rsi/esi
+    |.define r_arg3, r2 // rdx/edx
+    |.define r_arg4, r1 // rcx/ecx
+
+    |.define r_state, r3 // rbx/ebx
+    |.define r_stack, r9
+    |.define r_stacktop, r10
+    |.define r_stacknum, r11
+
+    /* compiled code takes a pointer to a state, which is set to the next
+     * state to be executed when this compiled code finishes */
+    |.type end_state, struct fish_state, r_state
+    /* second argument is a fish_stack pointer */
+    |.type stack, struct fish_stack, r_stack
+
+    /* prepcallN: set up arguments for function call with N parameters */
+    |.macro prepcall1, arg1
+        | mov r_arg1, arg1
+    |.endmacro
+
+    |.macro prepcall2, arg1, arg2
+        | prepcall1 arg1
+        | mov r_arg2, arg2
+    |.endmacro
+
+    |.macro prepcall3, arg1, arg2, arg3
+        | prepcall2 arg1, arg2
+        | mov r_arg3, arg3
+    |.endmacro
+
+    |.macro prepcall4, arg1, arg2, arg3, arg4
+        | prepcall3 arg1, arg2, arg3
+        | mov r_arg4, arg4
+    |.endmacro
+
+    /* increment the stack pointer by some number of items */
+    |.macro fish_inc_stack, items
+        | add r_stacktop, items*9
+        | add r_stacknum, items
+    |.endmacro
+
+    /* decrement the stack pointer by some number of items */
+    |.macro fish_dec_stack, items
+        | sub r_stacktop, items*9
+        | sub r_stacknum, items
+    |.endmacro
+
+    /* sets return code to 1 and returns if stack has less than num items */
+    |.macro check_underflow, num
+        | cmp r_stacknum, num
+        | jge >1
+        | mov r_ret, 1
+        | jmp ->epilogue
+        |1:
+    |.endmacro
+
+    /* pop an integer, converting from float if necessary, into the out
+     * register */
+    |.macro fish_pop_int, out
+        | check_underflow 1
+        /* get type */
+        | mov r0b, [r_stacktop-1]
+        | cmp r0b, INTEGER
+        | je >1
+        /* convert float before output */
+        | fld qword [r_stacktop-9]
+        | fistp qword [r_stacktop-9]
+        |1:
+        /* load integral value */
+        | mov out, [r_stacktop-9]
+        | fish_dec_stack, 1
+    |.endmacro
+
+    /* pop a value into the x87 */
+    |.macro fish_load, type
+        | cmp type, INTEGER
+        | jne >3
+        | fild qword [r_stacktop-9]
+        | jmp >4
+        |3:
+        | fld qword [r_stacktop-9]
+        |4:
+        | fish_dec_stack, 1
+    |.endmacro
+
+    /* pop one values, jumping to local label 1 if it's a float
+     * int is placed in out; float is pushed to the x87 stack */
+    |.macro fish_pop_one, out
+        | check_underflow, 1
+        /* get type */
+        | mov r0b, [r_stacktop-1]
+        | cmp r0b, INTEGER
+        | je >2
+        /* load into x87 */
+        | fish_load, r0b
+        | jmp >1
+        |2:
+        /* load two ints */
+        | mov out, [r_stacktop-9]
+        | fish_dec_stack 1
+    |.endmacro
+
+    /* pop two values, jumping to local label 1 if one or both are floats.
+     * ints are placed in out1 and out2; floats are pushed to the x87 stack */
+    |.macro fish_pop_two, out1, out2
+        | check_underflow, 2
+        /* get types */
+        | mov r0b, [r_stacktop-1]
+        | mov r1b, [r_stacktop-10]
+        | mov r2b, r0b
+        /* use that INTEGER is 0 and FLOAT is 1 */
+        | or r0b, r1b
+        | cmp r0b, INTEGER
+        | je >2
+        /* load into x87 */
+        | fish_load, r2b
+        | fish_load, r1b
+        | jmp >1
+        |2:
+        /* load two ints */
+        | mov out1, [r_stacktop-9]
+        | mov out2, [r_stacktop-18]
+        | fish_dec_stack 2
+    |.endmacro
+
+    /* push an integer to the stack from a register */
+    |.macro fish_push_reg, arg
+        | mov [r_stacktop], arg
+        | mov byte [r_stacktop+8], INTEGER
+        | fish_inc_stack 1
+    |.endmacro
+
+    /* push an integer constant */
+    |.macro fish_push_const, arg
+        | mov qword [r_stacktop], arg
+        | mov byte [r_stacktop+8], INTEGER
+        | fish_inc_stack 1
+    |.endmacro
+
+    /* pop st0 and push to fish stack */
+    |.macro fish_store_float
+        | fstp qword [r_stacktop]
+        | mov byte [r_stacktop+8], FLOAT
+        | fish_inc_stack 1
+    |.endmacro
+
+    |.define postcall, .nop
+
+    |.macro prologue
+        /* push callee-saved registers */
+        | push r3 // rbx/ebx
+        | push r5 // rbp/ebp
+        | push r6 // rsi/esi
+        | push r7 // rdi/edi
+        | mov r5, r4 // rbp/ebp, rsp/esp
+        /* state pointer is first argument */
+        | mov r_state, r_arg1
+        /* stack pointer is second argument */
+        | mov r_stack, r_arg2
+        | mov r_stacktop, stack->data
+        | mov rax, stack->num_items
+        | mov rcx, 9 // size of stack items
+        | mul rcx
+        | add r_stacktop, rax
+        | mov r_stacknum, stack->num_items
+    |.endmacro
+
+    |.macro epilogue
+        /* if epilogue is not jumped to, return 0 for success */
+        | xor r_ret, r_ret
+
+        |->epilogue:
+        | mov stack->num_items, r_stacknum
+        /* restore stack, pop callee-saved registers */
+        | mov r4, r5 // rsp/esp, rbp/ebp
+        | pop r7 // rdi/edi
+        | pop r6 // rsi/esi
+        | pop r5 // rbp/ebp
+        | pop r3 // rbx/ebx
+        | ret
+    |.endmacro
+
+    /* call instruction only supports 32-bit immediates, so use a register on
+     * x64 */
+    |.macro call_extern, target
+        | push r_stack
+        | push r_stacktop
+        | push r_stacknum
+        |.if X64
+            | mov64 r8, (uint64_t)&target
+            | call r8
+        |.else
+            | call (uint64_t)&target
+        |.endif
+        | pop r_stacknum
+        | pop r_stacktop
+        | pop r_stack
+    |.endmacro
+
+    /* begin generating code */
+    |.code
+    |->_entry:
+    | prologue
+
+    /* keep a cache (a hash table) of seen instruction pointer states.
+     * this is used to detect cycles, so we know when to stop assembling this
+     * line of execution */
+    struct fish_state *seen_states = NULL;
+
+    /* flag that previous instruction was a conditional skip, or a skip
+     * dependent on one */
+    bool condskip = false;
+
+    /* flag that a skip label should be placed after this instruction */
+    bool addskip = false;
+
+    /* count the number of items added/removed from stack */
+    int max_stack_change = 0;
+
+    while (state.direction != FINISHED)
+    {
+        /* get instruction from codebox */
+        char instr = fish_get(codebox, state.row, state.column);
+
+        if (!condskip)
+        {
+            /* check if we've been in this state before */
+            struct fish_state *seen_state = NULL;
+            HASH_FIND(hh, seen_states, &state, FISH_STATE_KEYLEN, seen_state);
+            if (seen_state)
+            {
+                /* we have been in this exact location with the same direction
+                 * before; modify the end state to reflect the current state
+                 * and exit */
+                | mov aword end_state->row, state.row
+                | mov aword end_state->column, state.column
+                | mov aword end_state->direction, state.direction
+
+                break;
+            }
+
+            /* store a copy of this state in a hash table */
+            struct fish_state *heapstate = malloc(sizeof(struct fish_state));
+            if (!heapstate)
+            {
+                perror("malloc");
+                exit(EXIT_FAILURE);
+            }
+
+            *heapstate = state;
+            HASH_ADD(hh, seen_states, row, FISH_STATE_KEYLEN, heapstate);
+        }
+
+        /* if last instruction was a skip, set a flag to place a skip label */
+        if (condskip)
+        {
+            condskip = false;
+            addskip = true;
+        }
+
+        switch (instr)
+        {
+            case '>':
+                /* right */
+                state.direction = RIGHT;
+                break;
+            case '<':
+                /* left */
+                state.direction = LEFT;
+                break;
+            case '^':
+                /* up */
+                state.direction = UP;
+                break;
+            case 'v':
+                /* down */
+                state.direction = DOWN;
+                break;
+            case '/':
+                /* right <-> up, left <-> down */
+                switch (state.direction)
+                {
+                    case RIGHT:
+                        state.direction = UP;
+                        break;
+                    case LEFT:
+                        state.direction = DOWN;
+                        break;
+                    case UP:
+                        state.direction = RIGHT;
+                        break;
+                    case DOWN:
+                        state.direction = LEFT;
+                        break;
+                    case FINISHED:
+                        /* never reached */
+                        break;
+                }
+                break;
+            case '\\':
+                /* right <-> down, left <-> up */
+                switch (state.direction)
+                {
+                    case RIGHT:
+                        state.direction = DOWN;
+                        break;
+                    case LEFT:
+                        state.direction = UP;
+                        break;
+                    case UP:
+                        state.direction = LEFT;
+                        break;
+                    case DOWN:
+                        state.direction = RIGHT;
+                        break;
+                    case FINISHED:
+                        /* never reached */
+                        break;
+                }
+                break;
+            case '|':
+                /* right <-> left */
+                switch (state.direction)
+                {
+                    case RIGHT:
+                        state.direction = LEFT;
+                        break;
+                    case LEFT:
+                        state.direction = RIGHT;
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case '_':
+                /* up <-> down */
+                switch (state.direction)
+                {
+                    case UP:
+                        state.direction = DOWN;
+                        break;
+                    case DOWN:
+                        state.direction = UP;
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case '#':
+                /* right <-> left, up <-> down */
+                switch (state.direction)
+                {
+                    case RIGHT:
+                        state.direction = LEFT;
+                        break;
+                    case LEFT:
+                        state.direction = RIGHT;
+                        break;
+                    case UP:
+                        state.direction = DOWN;
+                        break;
+                    case DOWN:
+                        state.direction = UP;
+                        break;
+                    case FINISHED:
+                        /* never reached */
+                        break;
+                }
+                break;
+            case 'x':
+                /* random direction */
+                {
+                    struct fish_state temp_state;
+
+                    /* get rand() % 4 and pick a new direction */
+                    | call_extern rand
+                    | and r0, 0b11
+                    | cmp r0, 1
+                    | jl >1
+                    | je >2
+                    | cmp r0, 2
+                    | je >3
+                    | jmp >4
+
+                    |.macro setdirection, lbl
+                        |lbl:
+                        | mov aword end_state->row, temp_state.row
+                        | mov aword end_state->column, temp_state.column
+                        | mov aword end_state->direction, temp_state.direction
+                        |jmp >5
+                    |.endmacro
+
+                    temp_state = state;
+                    temp_state.direction = RIGHT;
+                    fish_next(&temp_state, codebox);
+                    | setdirection 1
+                    temp_state = state;
+                    temp_state.direction = LEFT;
+                    fish_next(&temp_state, codebox);
+                    | setdirection 2
+                    temp_state = state;
+                    temp_state.direction = UP;
+                    fish_next(&temp_state, codebox);
+                    | setdirection 3
+                    temp_state = state;
+                    temp_state.direction = DOWN;
+                    fish_next(&temp_state, codebox);
+                    | setdirection 4
+
+                    |5:
+
+                    state.direction = FINISHED;
+                }
+                break;
+            case '.':
+                /* pop row, col and GOTO */
+                | fish_pop_int r_x
+                | fish_pop_int r_y
+                | mov end_state->row, r_x
+                | mov end_state->column, r_y
+                | mov aword end_state->direction, state.direction
+                state.direction = FINISHED;
+                break;
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+                /* push values 0-9 */
+                | fish_push_const instr-'0'
+                break;
+            case 'a':
+            case 'b':
+            case 'c':
+            case 'd':
+            case 'e':
+            case 'f':
+                /* push values 10-15 */
+                | fish_push_const instr-'a'+10
+                break;
+            case '+':
+                /* pop x, y; push y+x */
+                | fish_pop_two r_x, r_y
+                | add r_y, r_x
+                | jo >3
+                | fish_push_reg r_y
+                | jmp >2
+                |3:
+                /* overflow - push to x87 */
+                | fild qword [r_stacktop]
+                | fild qword [r_stacktop+9]
+                |1:
+                | faddp st1
+                | fish_store_float
+                |2:
+                break;
+            case '-':
+                /* pop x, y; push y-x */
+                | fish_pop_two r_x, r_y
+                | sub r_y, r_x
+                | jo >3
+                | fish_push_reg r_y
+                | jmp >2
+                |3:
+                /* overflow - push to x87 */
+                | fild qword [r_stacktop]
+                | fild qword [r_stacktop+9]
+                |1:
+                | fsubrp st1
+                | fish_store_float
+                |2:
+                break;
+            case '*':
+                /* pop x, y; push y*x */
+                | fish_pop_two r_x, r_y
+                | imul r_y, r_x
+                | jo >3
+                | fish_push_reg r_y
+                | jmp >2
+                |3:
+                /* overflow - push to x87 */
+                | fild qword [r_stacktop]
+                | fild qword [r_stacktop+9]
+                |1:
+                | fmulp st1
+                | fish_store_float
+                |2:
+                break;
+            case ',':
+                /* pop x, y; push y/x */
+                | fish_pop_two r_z, rax
+                | cqo
+                | idiv r_z
+                | cmp rdx, 0
+                | jne >3
+                | fish_push_reg rax
+                | jmp >2
+                |3:
+                /* there's a remainder - push to x87 */
+                | fild qword [r_stacktop]
+                | fild qword [r_stacktop+9]
+                |1:
+                | fdivp st1
+                | fish_store_float
+                |2:
+                break;
+            case '%':
+                /* pop x, y; push y%x */
+                | fish_pop_two r_z, rax
+                | cqo
+                | idiv r_z
+                | fish_push_reg rdx
+                | jmp >2
+                |1:
+                | fprem1
+                | fish_store_float
+                | fstp st0
+                |2:
+                break;
+            case '=':
+                /* pop x, y; push y==x (1 or 0) */
+                | fish_pop_two r_x, r_y
+                | cmp r_y, r_x
+                | jmp >2
+                |1:
+                | fcomip st0, st1
+                | fstp st0
+                |2:
+                | mov r_x, 1
+                | mov r_y, 0
+                | cmovne r_x, r_y
+                | fish_push_reg r_x
+                break;
+            case '(':
+                /* pop x, y; push y<x */
+                | fish_pop_two r_x, r_y
+                | cmp r_y, r_x
+                | jmp >2
+                |1:
+                | fcomi st0, st1
+                | fstp st0
+                |2:
+                | mov r_x, 0
+                | mov r_y, 1
+                | cmovl r_x, r_y
+                | fish_push_reg r_x
+                break;
+            case ')':
+                /* pop x, y; push y>x */
+                | fish_pop_two r_x, r_y
+                | cmp r_y, r_x
+                | jmp >2
+                |1:
+                | fcomi st0, st1
+                | fstp st0
+                |2:
+                | mov r_x, 0
+                | mov r_y, 1
+                | cmovg r_x, r_y
+                | fish_push_reg r_x
+                break;
+            case '"':
+            case '\'':
+                {
+                    /* string mode - read entire string and push it */
+                    char *string = fish_read_string(&state, codebox);
+                    size_t i = 0;
+                    while (string[i])
+                    {
+                        | fish_push_const string[i]
+                        ++i;
+                    }
+
+                    max_stack_change += i;
+
+                    free(string);
+                }
+                break;
+            case '!':
+                /* skip next instruction by adding an extra next */
+                fish_next(&state, codebox);
+                break;
+            case '?':
+                /* skip next instruction if popped value is zero */
+                | fish_pop_one r_x
+                | cmp r_x, 0
+                | jmp >2
+                |1:
+                | fldz
+                | fcomip st1
+                | fstp st0
+                |2:
+
+                {
+                    /* read following ! instructions, if any */
+                    bool inverted = false;
+                    while (fish_peek_next(codebox, state) == '!')
+                    {
+                        inverted = !inverted;
+                        fish_next(&state, codebox);
+                    }
+
+                    fish_number next_instr = fish_peek_next(codebox, state);
+
+                    if (strchr("0123456789abcdef+-*,%=():~$@oni;", next_instr))
+                    {
+                        /* for these simple instructions, we can insert a local
+                         * label and jump to it conditionally */
+                        condskip = true;
+
+                        if (inverted)
+                            | jne >9
+                        else
+                            | je >9
+                    }
+                    else
+                    {
+                        /* for other instructions, drop back to interpreter */
+                        if (inverted)
+                            | jne >1
+                        else
+                            | je >1
+
+                        fish_next(&state, codebox);
+
+                        | mov aword end_state->row, state.row
+                        | mov aword end_state->column, state.column
+                        | mov aword end_state->direction, state.direction
+                        | jmp >2
+
+                        fish_next(&state, codebox);
+
+                        |1:
+                        | mov aword end_state->row, state.row
+                        | mov aword end_state->column, state.column
+                        | mov aword end_state->direction, state.direction
+                        |2:
+
+                        state.direction = FINISHED;
+                    }
+                }
+                break;
+            case '~':
+                /* pop and discard a value */
+                | check_underflow, 1
+                | fish_dec_stack, 1
+                break;
+            case ':':
+                /* duplicate top value */
+                | check_underflow, 1
+                | mov al, [r_stacktop-1]
+                | mov rcx, [r_stacktop-9]
+                | fish_inc_stack, 1
+                | mov [r_stacktop-1], al
+                | mov [r_stacktop-9], rcx
+                break;
+            case '$':
+                /* swap top two values */
+                | check_underflow, 2
+                | mov al, [r_stacktop-1]
+                | mov rcx, [r_stacktop-9]
+                | xchg al, [r_stacktop-10]
+                | xchg rcx, [r_stacktop-18]
+                | xchg al, [r_stacktop-1]
+                | xchg rcx, [r_stacktop-9]
+                break;
+            case '@':
+                /* rotate top three: pop x, y, z; push y, x, z */
+                /* xyz -> yzx */
+                | check_underflow, 3
+                | mov al, [r_stacktop-1]
+                | mov rcx, [r_stacktop-9]
+                | xchg al, [r_stacktop-10]
+                | xchg rcx, [r_stacktop-18]
+                | xchg al, [r_stacktop-19]
+                | xchg rcx, [r_stacktop-27]
+                | xchg al, [r_stacktop-1]
+                | xchg rcx, [r_stacktop-9]
+                break;
+            case 'r':
+                /* reverse stack */
+                | mov stack->num_items, r_stacknum
+                | prepcall1 r_stack
+                | call_extern fish_reverse_stack
+                break;
+            case '{':
+                /* shift stack left */
+                | mov stack->num_items, r_stacknum
+                | prepcall1 r_stack
+                | call_extern fish_shift_left
+                break;
+            case '}':
+                /* shift stack right */
+                | mov stack->num_items, r_stacknum
+                | prepcall1 r_stack
+                | call_extern fish_shift_right
+                break;
+            case 'l':
+                /* push stack size */
+                | fish_push_reg r_stacknum
+                break;
+            case '&':
+                /* push from register or pop into register */
+                | mov al, stack->register_set
+                | cmp al, 0
+                | jne >2
+                /* pop into register */
+                | check_underflow 1
+                | mov al, [r_stacktop-1]
+                | mov rcx, [r_stacktop-9]
+                | fish_dec_stack 1
+                | mov stack->register_type, al
+                | mov stack->register_value, rcx
+                | mov byte stack->register_set, 1
+                | jmp >3
+                |2:
+                /* push from register */
+                | mov al, stack->register_type
+                | mov rcx, stack->register_value
+                | mov byte stack->register_set, 0
+                | fish_inc_stack 1
+                | mov [r_stacktop-1], al
+                | mov [r_stacktop-9], rcx
+                |3:
+                break;
+            case 'o':
+                /* pop a value and output a character */
+                | fish_pop_int r_x
+                | prepcall1 r_x
+                | call_extern putchar
+                | postcall 1
+                break;
+            case 'n':
+                /* pop a value and output a character */
+                | check_underflow 1
+                | cmp byte [r_stacktop-1], INTEGER
+                | jne >1
+                | prepcall2 format_int, [r_stacktop-9]
+                | jmp >2
+                |1:
+                /* no idea about this, but it's what gcc does */
+                | movq xmm0, qword [r_stacktop-9]
+                | prepcall1 format_float
+                |2:
+                | fish_dec_stack 1
+                | call_extern printf
+                | postcall 2
+                break;
+            case ';':
+                /* end program */
+                | mov aword end_state->direction, FINISHED
+                | xor r_ret, r_ret
+                | jmp ->epilogue
+
+                /* if this instruction can't be skipped, stop compiling */
+                if (!addskip)
+                    state.direction = FINISHED;
+
+                break;
+            case ' ':
+                /* no-op */
+                break;
+            default:
+                /* syntax error */
+                fish_free_compiler(Dst, seen_states);
+                return NULL;
+        }
+
+        /* instructions adding one item */
+        if (strchr("0123456789abcdef:lig&", instr))
+            ++max_stack_change;
+
+        /* add a forward skip label if one is needed */
+        if (addskip)
+        {
+            addskip = false;
+            |9:
+        }
+
+        // | prepcall3 format_debug, instr, [r_stacktop-9]
+        // | call_extern printf
+
+        /* increment instruction pointer */
+        fish_next(&state, codebox);
+    }
+
+    | epilogue
+
+    struct fish_code *code = malloc(sizeof(struct fish_code));
+    if (!code)
+    {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    fish_link_and_encode(Dst, code);
+    code->entry = labels[label_entry];
+    code->max_stack_change = max_stack_change;
+
+    fish_free_compiler(Dst, seen_states);
+
+    return code;
+}
+
+/* vim: set ft=c : */
