@@ -1,4 +1,4 @@
-TARGET = fish
+TARGET = fishjit
 PREFIX = /usr/local
 
 CC ?= cc
