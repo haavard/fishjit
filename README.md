@@ -30,7 +30,7 @@ Example
     $ cat helloworld.fish
     !v"hello, world"ar!
      >l?!;o
-    $ fish helloworld.fish
+    $ fishjit helloworld.fish
     hello, world
 
 License
