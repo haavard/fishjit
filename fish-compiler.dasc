@@ -869,14 +869,22 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
             case 'i':
                 /* push a character from standard input */
                 | call_extern getchar
-                /* if EOF does not equal -1, make sure -1 is pushed on EOF */
-                if (EOF != -1)
+                /* check for EOF */
+                switch (sizeof(int))
                 {
-                    | cmp rax, EOF
-                    | jne >1
-                    | mov rax, -1
-                    |1:
+                    case 2:
+                        | cmp ax, EOF
+                        break;
+                    case 4:
+                        | cmp eax, EOF
+                        break;
+                    case 8:
+                        | cmp rax, EOF
+                        break;
                 }
+                | jne >1
+                | mov rax, -1
+                |1:
                 | fish_push_reg rax
                 break;
             case ';':
