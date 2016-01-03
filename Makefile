@@ -28,7 +28,7 @@ ${TARGET}: ${OBJ}
 %.c: %.dasc
 	${DYNASM} ${DYNASMFLAGS} -o $@ $<
 
-check: all test.sh
+check: all
 	./test.sh ./${TARGET} ./tests
 
 install: all
