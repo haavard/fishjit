@@ -14,13 +14,16 @@ stdout=$(mktemp)
 stderr=$(mktemp)
 empty=$(mktemp)
 
-all_pass=yes
+test_count=0
+pass_count=0
 
 # Iterate over every *.fish, executing with input from *.stdin (if it exists).
 # The standard output and error of the script are then compared to *.stdout
 # and *.stderr, and if differences are found, that script fails the test.
 
 for script in $testdir/*.fish; do
+    (( test_count++ ))
+
     base=${script%.*}
     name=$(basename $base)
     stdin=$base.stdin
@@ -49,7 +52,7 @@ for script in $testdir/*.fish; do
     if [ $? -ne 0 ]; then
         echo -ne "\033[F\033[2K"
 
-        echo -e "${c_red}Fail${c_clear}: wrong stdout for $name"
+        echo -e "${c_red}[Fail]${c_clear} wrong stdout for $name"
         echo "--- Expected: ---"
         cat $expected_stdout
         echo "--- Actual: -----"
@@ -57,7 +60,6 @@ for script in $testdir/*.fish; do
         echo "-----------------"
 
         fail=yes
-        all_pass=no
     fi
 
     cmp $stderr $expected_stderr &>/dev/null
@@ -66,7 +68,7 @@ for script in $testdir/*.fish; do
             echo -ne "\033[F\033[2K"
         fi
 
-        echo -e "${c_red}Fail${c_clear}: wrong stderr for $name"
+        echo -e "${c_red}[Fail]${c_clear} wrong stderr for $name"
         echo "--- Expected: ---"
         cat $expected_stderr
         echo "--- Actual: -----"
@@ -74,21 +76,21 @@ for script in $testdir/*.fish; do
         echo "-----------------"
 
         fail=yes
-        all_pass=no
     fi
 
     if ! [ "$fail" = yes ]; then
+        (( pass_count++ ))
         echo -ne "\033[F\033[2K" # Back up and erase one line
-        echo -e "${c_green}Pass${c_clear}: $name"
+        echo -e "${c_green}[Pass]${c_clear} $name"
     fi
 done
 
 rm $stdout $stderr $empty
 
-if [ "$all_pass" = yes ]; then
-    echo -e "${bold}${c_green}All tests passed${c_clear}"
+if [ $test_count = $pass_count ]; then
+    echo -e "${bold}${c_green}${pass_count}/${test_count} tests passed${c_clear}"
     exit 0
 else
-    echo -e "${bold}${c_red}Tests failed${c_clear}"
+    echo -e "${bold}${c_red}${pass_count}/${test_count} tests passed${c_clear}"
     exit 1
 fi
