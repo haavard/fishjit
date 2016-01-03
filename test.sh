@@ -45,7 +45,7 @@ for script in $testdir/*.fish; do
     if [ $? -ne 0 ]; then
         echo -ne "\033[F\033[2K"
 
-        echo -e "${c_red}Fail${c_clear}: wrong stdout for '$name'"
+        echo -e "${c_red}Fail${c_clear}: wrong stdout for $name"
         echo "--- Expected: ---"
         cat $expected_stdout
         echo "--- Actual: -----"
@@ -62,7 +62,7 @@ for script in $testdir/*.fish; do
             echo -ne "\033[F\033[2K"
         fi
 
-        echo -e "${c_red}Fail${c_clear}: wrong stderr for '$name'"
+        echo -e "${c_red}Fail${c_clear}: wrong stderr for $name"
         echo "--- Expected: ---"
         cat $expected_stderr
         echo "--- Actual: -----"
@@ -75,7 +75,7 @@ for script in $testdir/*.fish; do
 
     if ! [ "$fail" = yes ]; then
         echo -ne "\033[F\033[2K"
-        echo -e "${c_green}Pass${c_clear}: '$name'"
+        echo -e "${c_green}Pass${c_clear}: $name"
     fi
 done
 

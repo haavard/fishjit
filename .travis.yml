@@ -1,0 +1,14 @@
+sudo: required
+dist: trusty
+
+language: c
+
+compiler:
+  - gcc
+  - clang
+
+install:
+  - sudo apt-get update -qq
+  - sudo apt-get install -qq uthash-dev luajit
+
+script: make -j2 check

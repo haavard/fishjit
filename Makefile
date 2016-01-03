@@ -1,10 +1,9 @@
 TARGET = fish
 PREFIX = /usr/local
 
-CC = cc
-LD = cc
+CC ?= cc
+LUA ?= luajit
 
-LUA = luajit
 DYNASM_DIR = luajit-2.0/dynasm
 DYNASM = ${LUA} ${DYNASM_DIR}/dynasm.lua
 
@@ -21,7 +20,7 @@ OBJ = ${SRC:.c=.o}
 all: ${TARGET}
 
 ${TARGET}: ${OBJ}
-	${LD} ${LDFLAGS} -o $@ $^
+	${CC} ${LDFLAGS} -o $@ $^
 
 .c.o: $(DEPS)
 	${CC} -MMD ${CFLAGS} -c -o $@ $<
@@ -29,7 +28,7 @@ ${TARGET}: ${OBJ}
 %.c: %.dasc
 	${DYNASM} ${DYNASMFLAGS} -o $@ $<
 
-check: all
+check: all test.sh
 	./test.sh ./${TARGET} ./tests
 
 install: all
