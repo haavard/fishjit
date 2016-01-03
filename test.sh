@@ -16,6 +16,10 @@ empty=$(mktemp)
 
 all_pass=yes
 
+# Iterate over every *.fish, executing with input from *.stdin (if it exists).
+# The standard output and error of the script are then compared to *.stdout
+# and *.stderr, and if differences are found, that script fails the test.
+
 for script in $testdir/*.fish; do
     base=${script%.*}
     name=$(basename $base)
@@ -74,7 +78,7 @@ for script in $testdir/*.fish; do
     fi
 
     if ! [ "$fail" = yes ]; then
-        echo -ne "\033[F\033[2K"
+        echo -ne "\033[F\033[2K" # Back up and erase one line
         echo -e "${c_green}Pass${c_clear}: $name"
     fi
 done
