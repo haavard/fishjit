@@ -17,6 +17,8 @@ empty=$(mktemp)
 test_count=0
 pass_count=0
 
+timeout_after=3
+
 # Iterate over every *.fish, executing with input from *.stdin (if it exists).
 # The standard output and error of the script are then compared to *.stdout
 # and *.stderr, and if differences are found, that script fails the test.
@@ -33,9 +35,15 @@ for script in $testdir/*.fish; do
     echo "Testing $name..."
 
     if [ -f $stdin ]; then
-        $target $script <$stdin >$stdout 2>$stderr
+        timeout $timeout_after $target $script <$stdin >$stdout 2>$stderr
     else
-        $target $script >$stdout 2>$stderr
+        timeout $timeout_after $target $script <$empty >$stdout 2>$stderr
+    fi
+
+    if [ $? -eq 124 ]; then
+        echo -ne "\e[F\e[2K"
+        echo -e "${c_red}[Fail]${c_clear} timeout for $name"
+        continue
     fi
 
     # if there's are no files, assume they should be empty
