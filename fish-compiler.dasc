@@ -632,7 +632,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 | fish_push_reg rdx
                 | jmp >2
                 |1:
-                | fprem1
+                | fprem
                 | fish_store_float
                 | fstp st0
                 |2:
