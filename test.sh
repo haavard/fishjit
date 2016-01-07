@@ -17,7 +17,7 @@ empty=$(mktemp)
 test_count=0
 pass_count=0
 
-timeout_after=3
+timeout_after=0.5
 
 # Iterate over every *.fish, executing with input from *.stdin (if it exists).
 # The standard output and error of the script are then compared to *.stdout
