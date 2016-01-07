@@ -616,11 +616,11 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 | fish_push_reg rax
                 | jmp >2
                 |3:
-                /* there's a remainder - push to x87 */
-                | fild qword [r_stacktop]
+                /* there's a remainder - retry on x87 */
                 | fild qword [r_stacktop+9]
+                | fild qword [r_stacktop]
                 |1:
-                | fdivp st1
+                | fdivrp st1
                 | fish_store_float
                 |2:
                 break;
