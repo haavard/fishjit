@@ -7,6 +7,7 @@ Currently only supports the amd64 architecture on Linux.
 Known limitations:
  - No i386 support
  - Instructions `p` and `g` not implemented
+ - Instructions `[` and `]` not implemented
  - Code is maximally 256 by 256 characters
  - Lots and lots of bugs
 
@@ -14,8 +15,8 @@ Installation
 ------------
 [![Build Status](https://travis-ci.com/haavardp/fishjit.svg?token=q1REyqE9bXXeo3BE68D1&branch=master)](https://travis-ci.com/haavardp/fishjit)
 
-fishjit requires the [uthash][3] hash table library. DynASM is included via a
-git submodule.
+fishjit requires the [uthash][3] library. DynASM is included via a git
+submodule.
 
     $ git clone https://github.com/haavardp/fishjit.git
     $ cd fishjit
