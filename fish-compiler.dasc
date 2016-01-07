@@ -529,9 +529,9 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 break;
             case '.':
                 /* pop row, col and GOTO */
-                | fish_pop_int r_x
+                | fish_pop_int r_z
                 | fish_pop_int r_y
-                | mov end_state->row, r_x
+                | mov end_state->row, r_z
                 | mov end_state->column, r_y
                 | mov aword end_state->direction, state.direction
                 state.direction = FINISHED;
