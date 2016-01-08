@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <time.h>
 
@@ -17,13 +18,13 @@ int main(int argc, char *argv[])
 
     /* disable input echo (for 'i' instruction) */
     struct termios t;
-    tcgetattr(fileno(stdout), &t);
+    tcgetattr(STDOUT_FILENO, &t);
     t.c_lflag &= ~ECHO;
-    tcsetattr(fileno(stdout), TCSANOW, &t);
+    tcsetattr(STDOUT_FILENO, TCSANOW, &t);
     /* enable non-canonical input */
-    tcgetattr(fileno(stdin), &t);
+    tcgetattr(STDIN_FILENO, &t);
     t.c_lflag &= ~ICANON;
-    tcsetattr(fileno(stdin), TCSANOW, &t);
+    tcsetattr(STDIN_FILENO, TCSANOW, &t);
     /* disable output buffering */
     setbuf(stdout, NULL);
 
