@@ -6,14 +6,13 @@
 
 #include "fish-codebox.h"
 
+/* size of one item on the stack */
 #define FISH_STACK_ITEM_SIZE (9)
 
 /*
  * The fish stack data consists of alternating numbers and type identifiers.
- * The numbers are either 32/64-bit integers (depending on architecture), or
- * doubles. The type identifier is located on top of the number on the stack,
- * so it can be read easily when popping. A stack item is always 8 bytes, even
- * on i386.
+ * The numbers are 64-bit integers or doubles. The type identifier is a byte
+ * located after each number, making each item a total of 9 bytes large.
  */
 
 /* constants identifying the type of stack items */
@@ -25,18 +24,18 @@ enum fish_type {
 /* fish interpreter stack (and register) */
 struct fish_stack
 {
-    size_t num_items;
-    size_t max_items;
-    fish_number *data;
+    uint64_t num_items;
+    uint64_t max_items;
+    void *data;
 
     /* register holds a single item */
     uint8_t register_set;
     uint8_t register_type;
-    uint64_t register_value; /* not necessarily an integer */
+    int64_t register_value; /* not necessarily an integer */
 };
 
-/* allocate a new stack structure with initial size max_items */
-struct fish_stack *fish_alloc_stack(size_t max_items);
+/* allocate a new stack structure */
+struct fish_stack *fish_alloc_stack();
 
 /* realloc stack data array to fit max_items; return true on success */
 bool fish_resize_stack(struct fish_stack *stack, size_t max_items);

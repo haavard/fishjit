@@ -80,8 +80,7 @@ int main(int argc, char *argv[])
     /* initialize instruction cache and VM state */
     struct fish_cache *cache = NULL;
     struct fish_state state = { .row = 0, .column = 0, .direction = RIGHT };
-    size_t const initial_stack_size = 128;
-    struct fish_stack *stack = fish_alloc_stack(initial_stack_size);
+    struct fish_stack *stack = fish_alloc_stack();
 
     /* main loop */
     do
@@ -99,19 +98,7 @@ int main(int argc, char *argv[])
         {
             /* grow stack to twice the size if an overflow is possible */
             size_t potential_items = stack->num_items + code->max_stack_change;
-            size_t new_size = 0;
-            if (potential_items > stack->max_items)
-            {
-                new_size = stack->max_items * 2;
-            }
-            /* shrink stack to half the size if less than a third is used */
-            else if (stack->max_items > initial_stack_size
-                     && potential_items < stack->max_items / 3)
-            {
-                new_size = stack->max_items / 2;
-            }
-
-            if (new_size && !fish_resize_stack(stack, new_size))
+            if (!fish_resize_stack(stack, potential_items))
             {
                 perror("realloc");
                 exit(EXIT_FAILURE);
