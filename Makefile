@@ -1,5 +1,5 @@
 TARGET = fishjit
-PREFIX = /usr/local
+PREFIX ?= /usr/local
 
 CC ?= cc
 LUA ?= luajit
