@@ -9,6 +9,6 @@ compiler:
 
 install:
   - sudo apt-get update -qq
-  - sudo apt-get install -qq uthash-dev luajit
+  - sudo apt-get install -qq uthash-dev luajit llvm-dev
 
 script: make -j2 check
