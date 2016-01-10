@@ -6,8 +6,8 @@ LUA = luajit
 DYNASM_DIR = luajit-2.0/dynasm
 DYNASM = ${LUA} ${DYNASM_DIR}/dynasm.lua
 
-CFLAGS += -MMD -std=c11 -D_DEFAULT_SOURCE -I${DYNASM_DIR} -Wall -Wextra -flto
-LDFLAGS += -flto
+CFLAGS += -MMD -std=c11 -D_DEFAULT_SOURCE -I${DYNASM_DIR} -Wall -Wextra
+LDFLAGS +=
 DYNASMFLAGS += -D X64
 
 DSRC = fish-compiler.dasc
