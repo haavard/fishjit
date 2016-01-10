@@ -1,13 +1,12 @@
 TARGET = fishjit
-PREFIX ?= /usr/local
+PREFIX = /usr/local
 
-CC ?= cc
-LUA ?= luajit
+LUA = luajit
 
 DYNASM_DIR = luajit-2.0/dynasm
 DYNASM = ${LUA} ${DYNASM_DIR}/dynasm.lua
 
-CFLAGS += -std=c11 -D_DEFAULT_SOURCE -I${DYNASM_DIR} -Wall -Wextra -flto
+CFLAGS += -MMD -std=c11 -D_DEFAULT_SOURCE -I${DYNASM_DIR} -Wall -Wextra -flto
 LDFLAGS += -flto
 DYNASMFLAGS += -D X64
 
@@ -21,9 +20,6 @@ all: ${TARGET}
 
 ${TARGET}: ${OBJ}
 	${CC} ${LDFLAGS} -o $@ $^
-
-.c.o: $(DEPS)
-	${CC} -MMD ${CFLAGS} -c -o $@ $<
 
 %.c: %.dasc
 	${DYNASM} ${DYNASMFLAGS} -o $@ $<
