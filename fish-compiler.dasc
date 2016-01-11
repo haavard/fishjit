@@ -17,6 +17,10 @@
 static char *format_int = "%ld";
 static char *format_float = "%f";
 
+#ifdef DEBUG
+static char *format_instr = " Instruction: '%c', stack: ";
+#endif
+
 /* allocate a buffer and link/encode instructions, storing it into a struct */
 void fish_link_and_encode(dasm_State **Dst, struct fish_code *code)
 {
@@ -91,9 +95,10 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
 
     |.if X64
         |.arch x64
-    |.else
-        |.arch x86
+        |.include fish-compiler-x64.dash
     |.endif
+
+    |.include fish-compiler-common.dash
 
     |.section code
 
@@ -105,212 +110,6 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
 
     |.actionlist actions
     dasm_setup(Dst, actions);
-
-    /* define registers, macros */
-    |.define r_x, r0 // rax/eax
-    |.define r_y, r2 // rdx/edx
-    |.define r_z, r1 // rcx/ecx
-
-    |.define r_ret, r0 // rax/eax
-    |.define r_arg1, r7 // rdi/edi
-    |.define r_arg2, r6 // rsi/esi
-    |.define r_arg3, r2 // rdx/edx
-    |.define r_arg4, r1 // rcx/ecx
-
-    |.define r_state, r3 // rbx/ebx
-    |.define r_stack, r9
-    |.define r_stacktop, r10
-    |.define r_stacknum, r11
-
-    /* compiled code takes a pointer to a state, which is set to the next
-     * state to be executed when this compiled code finishes */
-    |.type end_state, struct fish_state, r_state
-    /* second argument is a fish_stack pointer */
-    |.type stack, struct fish_stack, r_stack
-
-    /* prepcallN: set up arguments for function call with N parameters */
-    |.macro prepcall1, arg1
-        | mov r_arg1, arg1
-    |.endmacro
-
-    |.macro prepcall2, arg1, arg2
-        | prepcall1 arg1
-        | mov r_arg2, arg2
-    |.endmacro
-
-    |.macro prepcall3, arg1, arg2, arg3
-        | prepcall2 arg1, arg2
-        | mov r_arg3, arg3
-    |.endmacro
-
-    |.macro prepcall4, arg1, arg2, arg3, arg4
-        | prepcall3 arg1, arg2, arg3
-        | mov r_arg4, arg4
-    |.endmacro
-
-    /* increment the stack pointer by some number of items */
-    |.macro fish_inc_stack, items
-        | add r_stacktop, items*9
-        | add r_stacknum, items
-    |.endmacro
-
-    /* decrement the stack pointer by some number of items */
-    |.macro fish_dec_stack, items
-        | sub r_stacktop, items*9
-        | sub r_stacknum, items
-    |.endmacro
-
-    /* sets return code to 1 and returns if stack has less than num items */
-    |.macro check_underflow, num
-        | cmp r_stacknum, num
-        | jge >1
-        | mov r_ret, 1
-        | jmp ->epilogue
-        |1:
-    |.endmacro
-
-    /* pop an integer, converting from float if necessary, into the out
-     * register */
-    |.macro fish_pop_int, out
-        | check_underflow 1
-        /* get type */
-        | mov r0b, [r_stacktop-1]
-        | cmp r0b, INTEGER
-        | je >1
-        /* convert float before output */
-        | fld qword [r_stacktop-9]
-        | fistp qword [r_stacktop-9]
-        |1:
-        /* load integral value */
-        | mov out, [r_stacktop-9]
-        | fish_dec_stack, 1
-    |.endmacro
-
-    /* pop a value into the x87 */
-    |.macro fish_load, type
-        | cmp type, INTEGER
-        | jne >3
-        | fild qword [r_stacktop-9]
-        | jmp >4
-        |3:
-        | fld qword [r_stacktop-9]
-        |4:
-        | fish_dec_stack, 1
-    |.endmacro
-
-    /* pop one values, jumping to local label 1 if it's a float
-     * int is placed in out; float is pushed to the x87 stack */
-    |.macro fish_pop_one, out
-        | check_underflow, 1
-        /* get type */
-        | mov r0b, [r_stacktop-1]
-        | cmp r0b, INTEGER
-        | je >2
-        /* load into x87 */
-        | fish_load, r0b
-        | jmp >1
-        |2:
-        /* load two ints */
-        | mov out, [r_stacktop-9]
-        | fish_dec_stack 1
-    |.endmacro
-
-    /* pop two values, jumping to local label 1 if one or both are floats.
-     * ints are placed in out1 and out2; floats are pushed to the x87 stack */
-    |.macro fish_pop_two, out1, out2
-        | check_underflow, 2
-        /* get types */
-        | mov r0b, [r_stacktop-1]
-        | mov r1b, [r_stacktop-10]
-        | mov r2b, r0b
-        /* use that INTEGER is 0 and FLOAT is 1 */
-        | or r0b, r1b
-        | cmp r0b, INTEGER
-        | je >2
-        /* load into x87 */
-        | fish_load, r2b
-        | fish_load, r1b
-        | jmp >1
-        |2:
-        /* load two ints */
-        | mov out1, [r_stacktop-9]
-        | mov out2, [r_stacktop-18]
-        | fish_dec_stack 2
-    |.endmacro
-
-    /* push an integer to the stack from a register */
-    |.macro fish_push_reg, arg
-        | mov [r_stacktop], arg
-        | mov byte [r_stacktop+8], INTEGER
-        | fish_inc_stack 1
-    |.endmacro
-
-    /* push an integer constant */
-    |.macro fish_push_const, arg
-        | mov qword [r_stacktop], arg
-        | mov byte [r_stacktop+8], INTEGER
-        | fish_inc_stack 1
-    |.endmacro
-
-    /* pop st0 and push to fish stack */
-    |.macro fish_store_float
-        | fstp qword [r_stacktop]
-        | mov byte [r_stacktop+8], FLOAT
-        | fish_inc_stack 1
-    |.endmacro
-
-    |.define postcall, .nop
-
-    |.macro prologue
-        /* push callee-saved registers */
-        | push r3 // rbx/ebx
-        | push r5 // rbp/ebp
-        | push r6 // rsi/esi
-        | push r7 // rdi/edi
-        | mov r5, r4 // rbp/ebp, rsp/esp
-        /* state pointer is first argument */
-        | mov r_state, r_arg1
-        /* stack pointer is second argument */
-        | mov r_stack, r_arg2
-        | mov r_stacktop, stack->data
-        | mov rax, stack->num_items
-        | mov rcx, 9 // size of stack items
-        | mul rcx
-        | add r_stacktop, rax
-        | mov r_stacknum, stack->num_items
-    |.endmacro
-
-    |.macro epilogue
-        /* if epilogue is not jumped to, return 0 for success */
-        | xor r_ret, r_ret
-
-        |->epilogue:
-        | mov stack->num_items, r_stacknum
-        /* restore stack, pop callee-saved registers */
-        | mov r4, r5 // rsp/esp, rbp/ebp
-        | pop r7 // rdi/edi
-        | pop r6 // rsi/esi
-        | pop r5 // rbp/ebp
-        | pop r3 // rbx/ebx
-        | ret
-    |.endmacro
-
-    /* call instruction only supports 32-bit immediates, so use a register on
-     * x64 */
-    |.macro call_extern, target
-        | push r_stack
-        | push r_stacktop
-        | push r_stacknum
-        |.if X64
-            | mov64 r8, (uint64_t)&target
-            | call r8
-        |.else
-            | call (uint64_t)&target
-        |.endif
-        | pop r_stacknum
-        | pop r_stacktop
-        | pop r_stack
-    |.endmacro
 
     /* begin generating code */
     |.code
@@ -528,12 +327,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 }
                 break;
             case '.':
-                /* pop row, col and GOTO */
-                | fish_pop_int r_z
-                | fish_pop_int r_y
-                | mov end_state->row, r_z
-                | mov end_state->column, r_y
-                | mov aword end_state->direction, state.direction
+                | instr_goto
                 state.direction = FINISHED;
                 break;
             case '0':
@@ -547,7 +341,9 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
             case '8':
             case '9':
                 /* push values 0-9 */
-                | fish_push_const instr-'0'
+                | mov qword [r_stacktop], instr-'0'
+                | mov byte [r_stacktop+8], INTEGER
+                | fish_inc_stack 1
                 break;
             case 'a':
             case 'b':
@@ -556,128 +352,33 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
             case 'e':
             case 'f':
                 /* push values 10-15 */
-                | fish_push_const instr-'a'+10
+                | mov qword [r_stacktop], instr-'a'+10
+                | mov byte [r_stacktop+8], INTEGER
+                | fish_inc_stack 1
                 break;
             case '+':
-                /* pop x, y; push y+x */
-                | fish_pop_two r_x, r_y
-                | add r_y, r_x
-                | jo >3
-                | fish_push_reg r_y
-                | jmp >2
-                |3:
-                /* overflow - push to x87 */
-                | fild qword [r_stacktop]
-                | fild qword [r_stacktop+9]
-                |1:
-                | faddp st1
-                | fish_store_float
-                |2:
+                | instr_add
                 break;
             case '-':
-                /* pop x, y; push y-x */
-                | fish_pop_two r_x, r_y
-                | sub r_y, r_x
-                | jo >3
-                | fish_push_reg r_y
-                | jmp >2
-                |3:
-                /* overflow - push to x87 */
-                | fild qword [r_stacktop]
-                | fild qword [r_stacktop+9]
-                |1:
-                | fsubrp st1
-                | fish_store_float
-                |2:
+                | instr_sub
                 break;
             case '*':
-                /* pop x, y; push y*x */
-                | fish_pop_two r_x, r_y
-                | imul r_y, r_x
-                | jo >3
-                | fish_push_reg r_y
-                | jmp >2
-                |3:
-                /* overflow - push to x87 */
-                | fild qword [r_stacktop]
-                | fild qword [r_stacktop+9]
-                |1:
-                | fmulp st1
-                | fish_store_float
-                |2:
+                | instr_mul
                 break;
             case ',':
-                /* pop x, y; push y/x */
-                | fish_pop_two r_z, rax
-                | cqo
-                | idiv r_z
-                | cmp rdx, 0
-                | jne >3
-                | fish_push_reg rax
-                | jmp >2
-                |3:
-                /* there's a remainder - retry on x87 */
-                | fild qword [r_stacktop+9]
-                | fild qword [r_stacktop]
-                |1:
-                | fdivrp st1
-                | fish_store_float
-                |2:
+                | instr_div
                 break;
             case '%':
-                /* pop x, y; push y%x */
-                | fish_pop_two r_z, rax
-                | cqo
-                | idiv r_z
-                | fish_push_reg rdx
-                | jmp >2
-                |1:
-                | fprem
-                | fish_store_float
-                | fstp st0
-                |2:
+                | instr_mod
                 break;
             case '=':
-                /* pop x, y; push y==x (1 or 0) */
-                | fish_pop_two r_x, r_y
-                | cmp r_y, r_x
-                | jmp >2
-                |1:
-                | fcomip st0, st1
-                | fstp st0
-                |2:
-                | mov r_x, 1
-                | mov r_y, 0
-                | cmovne r_x, r_y
-                | fish_push_reg r_x
+                | instr_eq
                 break;
             case '(':
-                /* pop x, y; push y<x */
-                | fish_pop_two r_x, r_y
-                | cmp r_y, r_x
-                | jmp >2
-                |1:
-                | fcomi st0, st1
-                | fstp st0
-                |2:
-                | mov r_x, 0
-                | mov r_y, 1
-                | cmovl r_x, r_y
-                | fish_push_reg r_x
+                | instr_lt
                 break;
             case ')':
-                /* pop x, y; push y>x */
-                | fish_pop_two r_x, r_y
-                | cmp r_y, r_x
-                | jmp >2
-                |1:
-                | fcomi st0, st1
-                | fstp st0
-                |2:
-                | mov r_x, 0
-                | mov r_y, 1
-                | cmovg r_x, r_y
-                | fish_push_reg r_x
+                | instr_gt
                 break;
             case '"':
             case '\'':
@@ -687,7 +388,9 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                     size_t i = 0;
                     while (string[i])
                     {
-                        | fish_push_const string[i]
+                        | mov qword [r_stacktop], string[i]
+                        | mov byte [r_stacktop+8], INTEGER
+                        | fish_inc_stack 1
                         ++i;
                     }
 
@@ -702,14 +405,22 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 break;
             case '?':
                 /* skip next instruction if popped value is zero */
-                | fish_pop_one r_x
-                | cmp r_x, 0
-                | jmp >2
-                |1:
+                | fish_check_underflow 1
+                /* get type */
+                | cmp byte [r_stacktop-1], INTEGER
+                | je >2
+                /* compare floating point */
+                | fish_load_x87 byte [r_stacktop+8]
                 | fldz
                 | fcomip st1
                 | fstp st0
+                | jmp >3
                 |2:
+                /* compare integer */
+                | fish_dec_stack 1
+                | cmp qword [r_stacktop], 0
+                |3:
+                /* comparison flags are now set */
 
                 {
                     /* read following ! instructions, if any */
@@ -762,44 +473,17 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 break;
             case '~':
                 /* pop and discard a value */
-                | check_underflow, 1
+                | fish_check_underflow, 1
                 | fish_dec_stack, 1
                 break;
             case ':':
-                /* duplicate top value */
-                | check_underflow, 1
-                | mov al, [r_stacktop-1]
-                | mov rcx, [r_stacktop-9]
-                | fish_inc_stack, 1
-                | mov [r_stacktop-1], al
-                | mov [r_stacktop-9], rcx
+                | instr_dup
                 break;
             case '$':
-                /* swap top two values */
-                | check_underflow, 2
-                | mov al, [r_stacktop-1]
-                | mov rcx, [r_stacktop-9]
-                | xchg al, [r_stacktop-10]
-                | xchg rcx, [r_stacktop-18]
-                | xchg al, [r_stacktop-1]
-                | xchg rcx, [r_stacktop-9]
+                | instr_swap
                 break;
             case '@':
-                /* rotate top three: pop x, y, z; push x, z, y */
-                /* xyz -> zxy */
-                | check_underflow, 3
-                /* reg = top */
-                | mov al, [r_stacktop-1]
-                | mov rcx, [r_stacktop-9]
-                /* reg = 3rd, 3rd = top */
-                | xchg al, [r_stacktop-19]
-                | xchg rcx, [r_stacktop-27]
-                /* reg = 2nd, 2nd = 3rd */
-                | xchg al, [r_stacktop-10]
-                | xchg rcx, [r_stacktop-18]
-                /* top = 2nd */
-                | xchg al, [r_stacktop-1]
-                | xchg rcx, [r_stacktop-9]
+                | instr_rot
                 break;
             case 'r':
                 /* reverse stack */
@@ -821,54 +505,32 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 break;
             case 'l':
                 /* push stack size */
-                | fish_push_reg r_stacknum
+                | mov qword [r_stacktop], r_stacknum
+                | mov byte [r_stacktop+8], INTEGER
+                | fish_inc_stack 1
                 break;
             case '&':
-                /* push from register or pop into register */
-                | mov al, stack->register_set
-                | cmp al, 0
-                | jne >2
-                /* pop into register */
-                | check_underflow 1
-                | mov al, [r_stacktop-1]
-                | mov rcx, [r_stacktop-9]
-                | fish_dec_stack 1
-                | mov stack->register_type, al
-                | mov stack->register_value, rcx
-                | mov byte stack->register_set, 1
-                | jmp >3
-                |2:
-                /* push from register */
-                | mov al, stack->register_type
-                | mov rcx, stack->register_value
-                | mov byte stack->register_set, 0
-                | fish_inc_stack 1
-                | mov [r_stacktop-1], al
-                | mov [r_stacktop-9], rcx
-                |3:
+                | instr_register
                 break;
             case 'o':
-                /* pop a value and output a character */
-                | fish_pop_int r_x
-                | prepcall1 r_x
-                | call_extern putchar
-                | postcall 1
+                | instr_output
                 break;
             case 'n':
                 /* pop a value and output a character */
-                | check_underflow 1
-                | cmp byte [r_stacktop-1], INTEGER
+                | fish_check_underflow 1
+                | fish_dec_stack 1
+                | cmp byte [r_stacktop+8], INTEGER
                 | jne >1
-                | prepcall2 format_int, [r_stacktop-9]
+                | prepcall2 format_int, [r_stacktop]
+                | xor r0, r0
                 | jmp >2
                 |1:
-                /* no idea about this, but it's what gcc does */
-                | movq xmm0, qword [r_stacktop-9]
+                /* floating point argument in xmm0 */
+                | movsd xmm0, qword [r_stacktop]
                 | prepcall1 format_float
+                | mov r0, 1
                 |2:
-                | fish_dec_stack 1
                 | call_extern printf
-                | postcall 2
                 break;
             case 'i':
                 /* push a character from standard input */
@@ -887,9 +549,11 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                         break;
                 }
                 | jne >1
-                | mov rax, -1
+                | mov r0, -1
                 |1:
-                | fish_push_reg rax
+                | mov [r_stacktop], rax
+                | mov byte [r_stacktop+8], INTEGER
+                | fish_inc_stack 1
                 break;
             case ';':
                 /* end program */
@@ -921,6 +585,48 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
             addskip = false;
             |9:
         }
+
+#ifdef DEBUG
+        | mov rdi, format_instr
+        | mov rsi, instr
+        | mov64 rax, (uint64_t)&printf
+        | call rax
+
+        | mov r9, stack->data
+
+        |4:
+        | cmp r9, r_stacktop
+        | je >3
+
+        | push r9
+        | sub r4, 8
+        | prepcall1 ' '
+        | call_extern putchar
+        | add r4, 8
+        | pop r9
+
+        | cmp byte [r9+8], INTEGER
+        | jne >1
+        | prepcall2 format_int, [r9]
+        | jmp >2
+        |1:
+        | mov rax, 1
+        | movsd xmm0, qword [r9]
+        | prepcall1 format_float
+        |2:
+        | sub r4, 8
+        | push r9
+        | call_extern printf
+        | pop r9
+        | add r4, 8
+
+        | add r9, 9
+        | jmp <4
+
+        |3:
+        | prepcall1 '\n'
+        | call_extern putchar
+#endif
 
         /* increment instruction pointer */
         fish_next(&state, codebox);

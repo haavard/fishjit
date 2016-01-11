@@ -1,0 +1,363 @@
+|.define r_state, rbx
+|.define r_stack, r12
+|.define r_stacktop, r13
+|.define r_stacknum, r14
+
+/* compiled code takes a pointer to a state, which is set to the next
+ * state to be executed when this compiled code finishes */
+|.type end_state, struct fish_state, r_state
+
+/* second argument is a fish_stack pointer */
+|.type stack, struct fish_stack, r_stack
+
+/* System V AMD64 ABI */
+|.define r_ret, rax
+|.define r_arg1, rdi
+|.define r_arg2, rsi
+|.define r_arg3, rdx
+|.define r_arg4, rcx
+
+/* prepcallN: set up arguments for function call with N parameters */
+|.macro prepcall1, arg1
+    | mov r_arg1, arg1
+|.endmacro
+
+|.macro prepcall2, arg1, arg2
+    | prepcall1 arg1
+    | mov r_arg2, arg2
+|.endmacro
+
+|.macro prepcall3, arg1, arg2, arg3
+    | prepcall2 arg1, arg2
+    | mov r_arg3, arg3
+|.endmacro
+
+|.macro prepcall4, arg1, arg2, arg3, arg4
+    | prepcall3 arg1, arg2, arg3
+    | mov r_arg4, arg4
+|.endmacro
+
+|.macro call_extern, target
+    /* call instruction only supports 32-bit immediates, so use a register */
+    | mov64 r8, (uint64_t)&target
+    | call r8
+|.endmacro
+
+/* first code executed after function call
+ * push callee-saved registers, set up state registers */
+|.macro prologue
+    | push rbx
+    | push rbp
+    | push r12
+    | push r13
+    | push r14
+    | push r15
+    | sub rsp, 8
+    | mov rbp, rsp
+
+    /* state pointer is first argument */
+    | mov r_state, r_arg1
+    /* stack pointer is second argument */
+    | mov r_stack, r_arg2
+    | mov r_stacktop, stack->data
+    /* calculate stack top offset */
+    | mov rax, stack->num_items
+    | mov rcx, 9 // size of stack items
+    | mul rcx
+    | add r_stacktop, rax
+    | mov r_stacknum, stack->num_items
+|.endmacro
+
+/* last code executed
+ * pop callee-saved registers and return */
+|.macro epilogue
+    /* if epilogue is not jumped to, return 0 for success */
+    | xor r_ret, r_ret
+
+    |->epilogue:
+    /* store stack count */
+    | mov stack->num_items, r_stacknum
+
+    | mov rsp, rbp
+    | add rsp, 8
+    | pop r15
+    | pop r14
+    | pop r13
+    | pop r12
+    | pop rbp
+    | pop rbx
+
+    | ret
+|.endmacro
+
+/* pop an integer, converting from float if necessary, into the out
+ * register (TODO: check for conversion overflow) */
+|.macro fish_pop_int, out
+    | fish_check_underflow 1
+    | fish_dec_stack, 1
+    /* get type */
+    | cmp byte [r_stacktop+8], INTEGER
+    | je >1
+    /* convert float before output */
+    | fld qword [r_stacktop]
+    | fistp qword [r_stacktop]
+    |1:
+    /* load integral value */
+    | mov out, [r_stacktop]
+|.endmacro
+
+/* Pop two values, jumping forward to local label 1 if one or both are
+ * floats. If both are ints, the topmost item is placed in 'out' and the other
+ * item is located at [r_stacktop]. If one or both are floats, they are both
+ * pushed to the x87 stack. */
+|.macro fish_pop_two, out
+    | fish_check_underflow 2
+    /* get types */
+    | mov al, [r_stacktop-1]
+    /* NOTE: if register ah is used in place of cl in this macro, DynASM
+     * will encode it as spl in some places and ah in others, causing bugs */
+    | mov cl, [r_stacktop-10]
+    | mov ch, al
+    /* use that INTEGER is 0 and FLOAT is 1 */
+    | or ch, cl
+    | cmp ch, INTEGER
+    | je >2
+    /* load into x87 */
+    | fish_load_x87 al
+    | fish_load_x87 cl
+    | jmp >1
+    |2:
+    /* load two ints */
+    | fish_dec_stack 2
+    | mov out, [r_stacktop+9]
+|.endmacro
+
+/* instruction '+': pop x, y; push y+x */
+|.macro instr_add
+    | fish_pop_two rax
+    | add [r_stacktop], rax
+    | jo >3
+    | fish_inc_stack 1
+    | jmp >2
+    |3:
+    /* overflow occurred - add on x87 instead */
+    | fild qword [r_stacktop]
+    | fild qword [r_stacktop+9]
+    |1:
+    /* floating point addition */
+    | faddp st1
+    | fish_store_x87
+    |2:
+|.endmacro
+
+/* instruction '-': pop x, y; push y-x */
+|.macro instr_sub
+    | fish_pop_two rax
+    | sub [r_stacktop], rax
+    | jo >3
+    | fish_inc_stack 1
+    | jmp >2
+    |3:
+    /* overflow occurred - subtract on x87 instead */
+    | fild qword [r_stacktop]
+    | fild qword [r_stacktop+9]
+    |1:
+    /* floating point subtraction */
+    | fsubrp st1
+    | fish_store_x87
+    |2:
+|.endmacro
+
+/* instruction '*': pop x, y; push y*x */
+|.macro instr_mul
+    | fish_pop_two rax
+    | imul qword [r_stacktop]
+    | jo >3
+    | mov [r_stacktop], rax
+    | fish_inc_stack 1
+    | jmp >2
+    |3:
+    /* overflow occurred - multiply on x87 instead */
+    | fild qword [r_stacktop]
+    | fild qword [r_stacktop+9]
+    |1:
+    /* floating point multiplication */
+    | fmulp st1
+    | fish_store_x87
+    |2:
+|.endmacro
+
+/* instruction ',': pop x, y; push y/x */
+|.macro instr_div
+    | fish_pop_two rax
+    | mov rax, [r_stacktop]
+    | cqo
+    | idiv qword [r_stacktop+9]
+    /* check rdx for remainder */
+    | cmp rdx, 0
+    | jne >3
+    /* successful division, store back on stack */
+    | mov [r_stacktop], rax
+    | fish_inc_stack 1
+    | jmp >2
+    |3:
+    /* remainder - divide on x87 instead */
+    | fild qword [r_stacktop+9]
+    | fild qword [r_stacktop]
+    |1:
+    /* floating point division */
+    | fdivrp st1
+    | fish_store_x87
+    |2:
+|.endmacro
+
+/* instruction '%': pop x, y; push y mod x */
+|.macro instr_mod
+    | fish_pop_two rax
+    | mov rax, [r_stacktop]
+    | cqo
+    | idiv qword [r_stacktop+9]
+    | mov [r_stacktop], rdx
+    | fish_inc_stack 1
+    | jmp >2
+    |1:
+    /* floating point modulo */
+    | fprem
+    | fish_store_x87
+    | fstp st0
+    |2:
+|.endmacro
+
+/* instruction '=': pop x, y; push 1 if y==x, otherwise 0 */
+|.macro instr_eq
+    | fish_pop_two rax
+    | cmp [r_stacktop], rax
+    | jmp >2
+    |1:
+    /* floating point comparison */
+    | fcomip st0, st1
+    | fstp st0
+    |2:
+    | mov rax, 0
+    | mov rdx, 1
+    | cmove rax, rdx
+    | mov [r_stacktop], rax
+    | fish_inc_stack 1
+|.endmacro
+
+/* instruction '(': pop x, y; push 1 if y < x, otherwise 0 */
+|.macro instr_lt
+    | fish_pop_two rax
+    | cmp [r_stacktop], rax
+    | jmp >2
+    |1:
+    /* floating point comparison */
+    | fcomip st0, st1
+    | fstp st0
+    |2:
+    | mov rax, 0
+    | mov rdx, 1
+    | cmovl rax, rdx
+    | mov [r_stacktop], rax
+    | mov byte [r_stacktop+8], INTEGER
+    | fish_inc_stack 1
+|.endmacro
+
+/* instruction ')': pop x, y; push 1 if y > x, otherwise 0 */
+|.macro instr_gt
+    | fish_pop_two rax
+    | cmp [r_stacktop], rax
+    | jmp >2
+    |1:
+    /* floating point comparison */
+    | fcomip st0, st1
+    | fstp st0
+    |2:
+    | mov rax, 0
+    | mov rdx, 1
+    | cmovg rax, rdx
+    | mov [r_stacktop], rax
+    | mov byte [r_stacktop+8], INTEGER
+    | fish_inc_stack 1
+|.endmacro
+
+/* instruction ':': push top value (duplicate) */
+|.macro instr_dup
+    | fish_check_underflow 1
+    | mov rax, [r_stacktop-9]
+    | mov dl, [r_stacktop-1]
+    | mov [r_stacktop], rax
+    | mov [r_stacktop+8], dl
+    | fish_inc_stack 1
+|.endmacro
+
+/* instruction '$': swap top two values */
+|.macro instr_swap
+    | fish_check_underflow 2
+    | mov rax, [r_stacktop-9]
+    | mov dl, [r_stacktop-1]
+    | xchg rax, [r_stacktop-18]
+    | xchg dl, [r_stacktop-10]
+    | xchg rax, [r_stacktop-9]
+    | xchg dl, [r_stacktop-1]
+|.endmacro
+
+/* instruction '@': rotate top three values
+ * pop x, y, z; push x, z, y */
+|.macro instr_rot
+    | fish_check_underflow 3
+    /* reg = 1st */
+    | mov al, [r_stacktop-1]
+    | mov rcx, [r_stacktop-9]
+    /* reg = 3rd, 3rd = 1st */
+    | xchg al, [r_stacktop-19]
+    | xchg rcx, [r_stacktop-27]
+    /* reg = 2nd, 2nd = 3rd */
+    | xchg al, [r_stacktop-10]
+    | xchg rcx, [r_stacktop-18]
+    /* 1st = 2nd */
+    | xchg al, [r_stacktop-1]
+    | xchg rcx, [r_stacktop-9]
+|.endmacro
+
+/* instruction '.': pop row, column and continue execution there */
+|.macro instr_goto
+    | fish_pop_int rax
+    | fish_pop_int rdx
+    | mov end_state->row, rax
+    | mov end_state->column, rdx
+    | mov aword end_state->direction, state.direction
+|.endmacro
+
+/* instruction '&': pop value into empty register, or push value from set
+ * register */
+|.macro instr_register
+    | mov al, stack->register_set
+    | cmp al, 0
+    | jne >2
+    /* pop into register */
+    | fish_check_underflow 1
+    | mov al, [r_stacktop-1]
+    | mov rcx, [r_stacktop-9]
+    | fish_dec_stack 1
+    | mov stack->register_type, al
+    | mov stack->register_value, rcx
+    | mov byte stack->register_set, 1
+    | jmp >3
+    |2:
+    /* push from register */
+    | mov al, stack->register_type
+    | mov rcx, stack->register_value
+    | mov byte stack->register_set, 0
+    | fish_inc_stack 1
+    | mov [r_stacktop-1], al
+    | mov [r_stacktop-9], rcx
+    |3:
+|.endmacro
+
+/* instruction 'o': pop a value and output it as a character with putchar */
+|.macro instr_output
+    | fish_pop_int rax
+    | prepcall1 rax
+    | call_extern putchar
+|.endmacro

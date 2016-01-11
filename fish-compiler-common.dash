@@ -1,0 +1,41 @@
+/* increment the stack pointer by some number of items */
+|.macro fish_inc_stack, items
+    | add r_stacktop, items*9
+    | add r_stacknum, items
+|.endmacro
+
+/* decrement the stack pointer by some number of items */
+|.macro fish_dec_stack, items
+    | sub r_stacktop, items*9
+    | sub r_stacknum, items
+|.endmacro
+
+/* sets return code to 1 and returns if stack has less than num items */
+|.macro fish_check_underflow, num
+    | cmp r_stacknum, num
+    | jge >1
+    | mov r_ret, 1
+    | jmp ->epilogue
+    |1:
+|.endmacro
+
+/* pop a value from the ><> stack into the x87 */
+|.macro fish_load_x87, type
+    | fish_dec_stack 1
+    | cmp type, INTEGER
+    | jne >3
+    /* load integer */
+    | fild qword [r_stacktop]
+    | jmp >4
+    |3:
+    /* load floating point */
+    | fld qword [r_stacktop]
+    |4:
+|.endmacro
+
+/* pop st0 and push to the ><> stack */
+|.macro fish_store_x87
+    | fstp qword [r_stacktop]
+    | mov byte [r_stacktop+8], FLOAT
+    | fish_inc_stack 1
+|.endmacro
