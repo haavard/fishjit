@@ -361,3 +361,14 @@
     | prepcall1 rax
     | call_extern putchar
 |.endmacro
+
+/* instruction 'g': pop column and row and push the value at that location */
+|.macro instr_get
+    | fish_pop_int rdx
+    | fish_pop_int rax
+    | prepcall3 codebox, rax, rdx
+    | call_extern fish_get
+    | mov [r_stacktop], rax
+    | mov byte [r_stacktop+8], INTEGER
+    | fish_inc_stack 1
+|.endmacro

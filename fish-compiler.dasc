@@ -561,6 +561,9 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 | mov byte [r_stacktop+8], INTEGER
                 | fish_inc_stack 1
                 break;
+            case 'g':
+                | instr_get
+                break;
             case ';':
                 /* end program */
                 | mov aword end_state->direction, FINISHED
