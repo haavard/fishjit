@@ -105,7 +105,7 @@ int main(int argc, char *argv[])
             }
 
             /* execute code, updating state */
-            int ret = code->entry(&state, stack);
+            int ret = code->entry(&state, stack, &codebox);
             if (ret != 0)
             {
                 fputs("something smells fishy...\n", stderr);

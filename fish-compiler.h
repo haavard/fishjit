@@ -8,10 +8,12 @@
 struct fish_code
 {
     /* compiled code takes a state argument, and sets it to the next state to
-     * be executed when the code has finished 
+     * be executed when the code has finished
      *
      * returns 0 for success and non-zero otherwise (e.g. stack underflow) */
-    int (*entry)(struct fish_state *, struct fish_stack *);
+    int (*entry)(struct fish_state *,
+                 struct fish_stack *,
+                 struct fish_codebox *);
 
     /* buffer holding the machine code, created by mmap */
     size_t size;

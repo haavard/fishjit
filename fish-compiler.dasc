@@ -439,7 +439,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
 
                     fish_number next_instr = fish_peek_next(codebox, state);
 
-                    if (strchr("0123456789abcdef+-*,%=():~$@oni;", next_instr))
+                    if (strchr("0123456789abcdef+-*,%=():~$@onigp;", next_instr))
                     {
                         /* for these simple instructions, we can insert a local
                          * label and jump to it conditionally */
@@ -560,6 +560,9 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 | mov [r_stacktop], rax
                 | mov byte [r_stacktop+8], INTEGER
                 | fish_inc_stack 1
+                break;
+            case 'g':
+                | instr_get
                 break;
             case ';':
                 /* end program */

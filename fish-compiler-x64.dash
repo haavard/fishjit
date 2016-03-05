@@ -1,4 +1,5 @@
 |.define r_state, rbx
+|.define r_codebox, r11
 |.define r_stack, r12
 |.define r_stacktop, r13
 |.define r_stacknum, r14
@@ -9,6 +10,9 @@
 
 /* second argument is a fish_stack pointer */
 |.type stack, struct fish_stack, r_stack
+
+/* third argument is fish_codebox */
+|.type codebox, struct fish_codebox, r_codebox
 
 /* System V AMD64 ABI */
 |.define r_ret, rax
@@ -60,6 +64,8 @@
     /* stack pointer is second argument */
     | mov r_stack, r_arg2
     | mov r_stacktop, stack->data
+    /* codebox is third argument */
+    | mov r_codebox, r_arg3
     /* calculate stack top offset */
     | mov rax, stack->num_items
     | mov rcx, 9 // size of stack items
@@ -360,4 +366,15 @@
     | fish_pop_int rax
     | prepcall1 rax
     | call_extern putchar
+|.endmacro
+
+/* instruction 'g': pop column and row and push the value at that location */
+|.macro instr_get
+    | fish_pop_int rax
+    | fish_pop_int rdx
+    | prepcall3 r_codebox, rax, rdx
+    | call_extern fish_get
+    | mov [r_stacktop], rax
+    | mov byte [r_stacktop+8], INTEGER
+    | fish_inc_stack 1
 |.endmacro
