@@ -6,7 +6,7 @@ LUA = luajit
 DYNASM_DIR = luajit-2.0/dynasm
 DYNASM = ${LUA} ${DYNASM_DIR}/dynasm.lua
 
-CFLAGS += -MMD -std=c11 -D_DEFAULT_SOURCE -I${DYNASM_DIR} -Wall -Wextra
+CFLAGS += -MMD -std=c11 -D_DEFAULT_SOURCE -I${DYNASM_DIR} -Wall -Wextra -g
 LDFLAGS +=
 DYNASMFLAGS += -D X64
 
