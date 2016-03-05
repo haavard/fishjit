@@ -140,7 +140,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
     while (state.direction != FINISHED)
     {
         /* get instruction from codebox */
-        char instr = fish_get(codebox, state.row, state.column);
+        fish_number instr = fish_get(codebox, state.row, state.column);
 
         if (!condskip)
         {
