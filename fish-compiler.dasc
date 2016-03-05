@@ -96,6 +96,12 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
     |.if X64
         |.arch x64
         |.include fish-compiler-x64.dash
+    |.elif X86
+        |.arch x86
+        |.fatal "x86 is not supported"
+    |.else
+        |.arch x64
+        |.fatal "no valid architecture specified"
     |.endif
 
     |.include fish-compiler-common.dash
