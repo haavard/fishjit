@@ -9,7 +9,6 @@ Known limitations:
  - Instructions `p` and `g` not implemented
  - Instructions `[` and `]` not implemented
  - Code is maximally 256 by 256 characters
- - Lots and lots of bugs
 
 Installation
 ------------
