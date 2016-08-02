@@ -21,15 +21,12 @@ struct fish_code *fish_get_or_compile(struct fish_cache **cache,
 
     /* store compiled code in cache */
     cache_item = malloc(sizeof(struct fish_cache));
-    if (!cache_item)
+    if (cache_item)
     {
-        perror("malloc");
-        exit(EXIT_FAILURE);
+        cache_item->state = *state;
+        cache_item->code = code;
+        HASH_ADD(hh, *cache, state, FISH_STATE_KEYLEN, cache_item);
     }
-
-    cache_item->state = *state;
-    cache_item->code = code;
-    HASH_ADD(hh, *cache, state, FISH_STATE_KEYLEN, cache_item);
 
     return code;
 }
