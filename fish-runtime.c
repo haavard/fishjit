@@ -1,6 +1,7 @@
 #include "fish-runtime.h"
-#include "fish-stack.h"
+#include <stdint.h>
 #include <string.h>
+#include "fish-stack.h"
 
 /* reverse stack ('r' instruction) */
 void
