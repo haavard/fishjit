@@ -12,14 +12,12 @@ DYNASMFLAGS += -D X64
 
 DSRC = fish-compiler.dasc
 SRC = ${DSRC:.dasc=.c} \
-	fish-cache.c fish-codebox.c fish-runtime.c fish-runtime.c fish-stack.c \
-	main.c
+	  fish-cache.c fish-codebox.c fish-runtime.c fish-runtime.c fish-stack.c
 OBJ = ${SRC:.c=.o}
 
 all: ${TARGET}
 
 ${TARGET}: ${OBJ}
-	${CC} ${LDFLAGS} -o $@ $^
 
 %.c: %.dasc
 	${DYNASM} ${DYNASMFLAGS} -o $@ $<
