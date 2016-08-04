@@ -24,10 +24,8 @@ static char *format_instr = " Instruction: '%c', stack: ";
 bool
 fish_link_and_encode(dasm_State **Dst, struct fish_code *code)
 {
-    int ret;
-
     /* link and get resulting code size */
-    if ((ret = dasm_link(Dst, &code->size)) != 0)
+    if (dasm_link(Dst, &code->size) != 0)
         return false;
 
     /* allocate writable buffer for code */
@@ -40,7 +38,7 @@ fish_link_and_encode(dasm_State **Dst, struct fish_code *code)
     }
 
     /* encode instructions */
-    if ((ret = dasm_encode(Dst, code->buffer)) != 0)
+    if (dasm_encode(Dst, code->buffer) != 0)
         return false;
 
     /* make buffer executable */
