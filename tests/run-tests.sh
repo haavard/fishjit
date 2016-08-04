@@ -2,8 +2,8 @@
 
 set -o nounset
 
-target=$1
-testdir=$2
+test_target=$1
+tests_dir=$2
 
 c_red='\e[31m'
 c_green='\e[32m'
@@ -22,8 +22,8 @@ timeout_after=0.5
 # Iterate over every *.fish, executing with input from *.stdin (if it exists).
 # The standard output and error of the script are then compared to *.stdout
 # and *.stderr, and if differences are found, that script fails the test.
-
-for script in $testdir/*.fish; do
+for script in $(find $tests_dir -name '*.fish')
+do
     (( test_count++ ))
 
     base=${script%.*}
@@ -35,9 +35,9 @@ for script in $testdir/*.fish; do
     echo "Testing $name..."
 
     if [ -f $stdin ]; then
-        timeout $timeout_after $target $script <$stdin >$stdout 2>$stderr
+        timeout $timeout_after $test_target $script <$stdin >$stdout 2>$stderr
     else
-        timeout $timeout_after $target $script <$empty >$stdout 2>$stderr
+        timeout $timeout_after $test_target $script <$empty >$stdout 2>$stderr
     fi
 
     if [ $? -eq 124 ]; then

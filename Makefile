@@ -25,7 +25,7 @@ ${TARGET}: ${OBJ}
 	${DYNASM} ${DYNASMFLAGS} -o $@ $<
 
 check: all
-	./test.sh ./${TARGET} ./tests
+	./tests/run-tests.sh ./${TARGET} ./tests
 
 install: all
 	install -Dm755 ${TARGET} "${DESTDIR}${PREFIX}/bin"
