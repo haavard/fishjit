@@ -1,6 +1,7 @@
 #ifndef FISH_COMPILER_H
 #define FISH_COMPILER_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 struct fish_codebox;

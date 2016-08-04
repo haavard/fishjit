@@ -4,7 +4,6 @@
 #include "fish-compiler.h"
 #include "fish-runtime.h"
 #include "fish-stack.h"
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,43 +20,33 @@ static char *format_instr = " Instruction: '%c', stack: ";
 #endif
 
 /* allocate a buffer and link/encode instructions, storing it into a struct */
-void
+bool
 fish_link_and_encode(dasm_State **Dst, struct fish_code *code)
 {
     int ret;
 
     /* link and get resulting code size */
     if ((ret = dasm_link(Dst, &code->size)) != 0)
-    {
-        fprintf(stderr, "Could not link: dasm_link returned %d\n", ret);
-        exit(EXIT_FAILURE);
-    }
+        return false;
 
     /* allocate writable buffer for code */
     code->buffer = mmap(NULL, code->size, PROT_READ | PROT_WRITE,
                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-
     if (code->buffer == MAP_FAILED)
     {
-        perror("Could not map memory");
-        exit(EXIT_FAILURE);
+        code->buffer = NULL;
+        return false;
     }
 
     /* encode instructions */
     if ((ret = dasm_encode(Dst, code->buffer)) != 0)
-    {
-        fprintf(stderr, "Could not encode instructions: dasm_encode returned "
-                        "%d\n",
-                ret);
-        exit(EXIT_FAILURE);
-    }
+        return false;
 
     /* make buffer executable */
     if (mprotect(code->buffer, code->size, PROT_READ | PROT_EXEC) != 0)
-    {
-        perror("Could not make memory executable");
-        exit(EXIT_FAILURE);
-    }
+        return false;
+
+    return true;
 }
 
 /* free DynASM state and other compiler structures */
@@ -79,12 +68,10 @@ fish_free_compiler(dasm_State **Dst, struct fish_state *seen_states)
 void
 fish_free_code(struct fish_code *code)
 {
-    if (munmap(code->buffer, code->size) == -1)
-    {
-        perror("munmap");
-        exit(EXIT_FAILURE);
-    }
+    if (!code)
+        return;
 
+    munmap(code->buffer, code->size);
     free(code);
 }
 
@@ -165,8 +152,8 @@ fish_compile(struct fish_codebox *codebox, struct fish_state state)
             struct fish_state *heapstate = malloc(sizeof(struct fish_state));
             if (!heapstate)
             {
-                perror("malloc");
-                exit(EXIT_FAILURE);
+                fish_free_compiler(Dst, seen_states);
+                return NULL;
             }
 
             *heapstate = state;
@@ -560,6 +547,7 @@ fish_compile(struct fish_codebox *codebox, struct fish_state state)
             default: /* syntax error */
                 fish_free_compiler(Dst, seen_states);
                 return NULL;
+                break;
         }
 
         /* instructions adding one item */
@@ -621,18 +609,19 @@ fish_compile(struct fish_codebox *codebox, struct fish_state state)
 
     | epilogue
 
+    /* allocate a struct to hold the compiled code */
     struct fish_code *code = malloc(sizeof(struct fish_code));
-    if (!code)
+
+    /* link and encode */
+    if (!code || !fish_link_and_encode(Dst, code))
     {
-        perror("malloc");
-        exit(EXIT_FAILURE);
+        fish_free_compiler(Dst, seen_states);
+        fish_free_code(code);
+        return NULL;
     }
 
-    fish_link_and_encode(Dst, code);
     code->entry = labels[label_entry];
     code->max_stack_change = max_stack_change;
-
-    fish_free_compiler(Dst, seen_states);
 
     return code;
 }
