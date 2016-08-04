@@ -1,10 +1,9 @@
 #ifndef FISH_STACK_H
 #define FISH_STACK_H
 
-#include <stdlib.h>
 #include <stdbool.h>
-
-#include "fish-codebox.h"
+#include <stdint.h>
+#include <stdlib.h>
 
 /* size of one item on the stack */
 #define FISH_STACK_ITEM_SIZE (9)
@@ -16,7 +15,8 @@
  */
 
 /* constants identifying the type of stack items */
-enum fish_type {
+enum fish_type
+{
     INTEGER = 0,
     FLOAT = 1
 };
@@ -35,12 +35,15 @@ struct fish_stack
 };
 
 /* allocate a new stack structure */
-struct fish_stack *fish_alloc_stack();
+struct fish_stack *
+fish_alloc_stack();
 
 /* realloc stack data array to fit max_items; return true on success */
-bool fish_resize_stack(struct fish_stack *stack, size_t max_items);
+bool
+fish_resize_stack(struct fish_stack *stack, size_t max_items);
 
 /* free a stack structure */
-void fish_free_stack(struct fish_stack *stack);
+void
+fish_free_stack(struct fish_stack *stack);
 
 #endif /* FISH_STACK_H */

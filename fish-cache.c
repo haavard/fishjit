@@ -1,12 +1,12 @@
-#include <stdio.h>
-
-#include "fish-codebox.h"
-
 #include "fish-cache.h"
+#include "fish-codebox.h"
+#include "fish-compiler.h"
+#include <stdio.h>
+#include <stdlib.h>
 
-struct fish_code *fish_get_or_compile(struct fish_cache **cache,
-                                      struct fish_state *state,
-                                      struct fish_codebox *codebox)
+struct fish_code *
+fish_get_or_compile(struct fish_cache **cache, struct fish_state *state,
+                    struct fish_codebox *codebox)
 {
     /* check cache */
     struct fish_cache *cache_item = NULL;
@@ -31,7 +31,8 @@ struct fish_code *fish_get_or_compile(struct fish_cache **cache,
     return code;
 }
 
-void fish_free_cache(struct fish_cache *cache)
+void
+fish_free_cache(struct fish_cache *cache)
 {
     struct fish_cache *item, *tmp;
     HASH_ITER(hh, cache, item, tmp)

@@ -1,9 +1,10 @@
-#include "fish-stack.h"
-
 #include "fish-runtime.h"
+#include "fish-stack.h"
+#include <string.h>
 
 /* reverse stack ('r' instruction) */
-void fish_reverse_stack(struct fish_stack *stack)
+void
+fish_reverse_stack(struct fish_stack *stack)
 {
     void *front = stack->data;
     void *back = stack->data + FISH_STACK_ITEM_SIZE * (stack->num_items - 1);
@@ -22,7 +23,8 @@ void fish_reverse_stack(struct fish_stack *stack)
 }
 
 /* shift stack left ('{' instruction) */
-void fish_shift_left(struct fish_stack *stack)
+void
+fish_shift_left(struct fish_stack *stack)
 {
     void *front = stack->data;
     void *back = stack->data + FISH_STACK_ITEM_SIZE * (stack->num_items - 1);
@@ -36,7 +38,8 @@ void fish_shift_left(struct fish_stack *stack)
 }
 
 /* shift stack right ('}' instruction) */
-void fish_shift_right(struct fish_stack *stack)
+void
+fish_shift_right(struct fish_stack *stack)
 {
     void *front = stack->data;
     void *back = stack->data + FISH_STACK_ITEM_SIZE * (stack->num_items - 1);

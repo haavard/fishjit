@@ -1,17 +1,16 @@
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <time.h>
-
-#include <termios.h>
-
 #include "fish-cache.h"
 #include "fish-codebox.h"
+#include "fish-compiler.h"
 #include "fish-stack.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <termios.h>
+#include <time.h>
+#include <unistd.h>
 
-int main(int argc, char *argv[])
+int
+main(int argc, char *argv[])
 {
     /* seed PRNG */
     srand(time(NULL));
@@ -79,7 +78,7 @@ int main(int argc, char *argv[])
 
     /* initialize instruction cache and VM state */
     struct fish_cache *cache = NULL;
-    struct fish_state state = { .row = 0, .column = 0, .direction = RIGHT };
+    struct fish_state state = {.row = 0, .column = 0, .direction = RIGHT};
     struct fish_stack *stack = fish_alloc_stack();
 
     /* main loop */
@@ -112,8 +111,7 @@ int main(int argc, char *argv[])
                 exit(EXIT_FAILURE);
             }
         }
-    }
-    while (state.direction != FINISHED);
+    } while (state.direction != FINISHED);
 
     /* clean up */
     fish_free_cache(cache);

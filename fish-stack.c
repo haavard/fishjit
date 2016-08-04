@@ -1,6 +1,6 @@
-#include <stdio.h>
-
 #include "fish-stack.h"
+#include "fish-codebox.h"
+#include <stdio.h>
 
 /* initial amount of space on the stack, in items */
 #define FISH_INITIAL_STACK_SIZE (128)
@@ -9,7 +9,8 @@
 #define STACK_SIZE(items) (FISH_STACK_ITEM_SIZE * (items))
 
 /* allocate a new stack structure with initial size max_items */
-struct fish_stack *fish_alloc_stack()
+struct fish_stack *
+fish_alloc_stack()
 {
     struct fish_stack *stack = malloc(sizeof(struct fish_stack));
     fish_number *data = malloc(STACK_SIZE(FISH_INITIAL_STACK_SIZE));
@@ -28,7 +29,8 @@ struct fish_stack *fish_alloc_stack()
 }
 
 /* realloc stack data array to fit items; return true on success */
-bool fish_resize_stack(struct fish_stack *stack, size_t items)
+bool
+fish_resize_stack(struct fish_stack *stack, size_t items)
 {
     size_t new_size = stack->max_items;
 
@@ -37,8 +39,7 @@ bool fish_resize_stack(struct fish_stack *stack, size_t items)
         new_size *= 2;
 
     /* if less than a third of the stack is used, halve its size */
-    while (new_size > FISH_INITIAL_STACK_SIZE
-           && items < new_size / 3)
+    while (new_size > FISH_INITIAL_STACK_SIZE && items < new_size / 3)
         new_size /= 2;
 
     /* nothing to be done */
@@ -68,7 +69,8 @@ bool fish_resize_stack(struct fish_stack *stack, size_t items)
 }
 
 /* free a stack structure */
-void fish_free_stack(struct fish_stack *stack)
+void
+fish_free_stack(struct fish_stack *stack)
 {
     free(stack->data);
     free(stack);

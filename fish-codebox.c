@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <stdio.h>
-
 #include "fish-codebox.h"
 
 void fish_next(struct fish_state *state, struct fish_codebox const *codebox)

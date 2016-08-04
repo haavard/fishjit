@@ -1,6 +1,7 @@
 #ifndef CODEBOX_H
 #define CODEBOX_H
 
+#include <stddef.h>
 #include <uthash.h>
 
 /* the size of the codebox "core", stored in a 2-dimensional array */

@@ -1,17 +1,16 @@
-#include <stdio.h>
-#include <stdbool.h>
-#include <stdlib.h>
-
-#include <sys/mman.h>
-
 #include "dasm_proto.h"
 #include "dasm_x86.h"
-
 #include "fish-codebox.h"
-#include "fish-stack.h"
-#include "fish-runtime.h"
-
 #include "fish-compiler.h"
+#include "fish-runtime.h"
+#include "fish-stack.h"
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <uthash.h>
 
 /* used by 'n' instruction to invoke printf */
 static char *format_int = "%ld";
@@ -22,7 +21,8 @@ static char *format_instr = " Instruction: '%c', stack: ";
 #endif
 
 /* allocate a buffer and link/encode instructions, storing it into a struct */
-void fish_link_and_encode(dasm_State **Dst, struct fish_code *code)
+void
+fish_link_and_encode(dasm_State **Dst, struct fish_code *code)
 {
     int ret;
 
@@ -34,9 +34,8 @@ void fish_link_and_encode(dasm_State **Dst, struct fish_code *code)
     }
 
     /* allocate writable buffer for code */
-    code->buffer = mmap(NULL, code->size,
-                        PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
-                        -1, 0);
+    code->buffer = mmap(NULL, code->size, PROT_READ | PROT_WRITE,
+                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
     if (code->buffer == MAP_FAILED)
     {
@@ -48,7 +47,8 @@ void fish_link_and_encode(dasm_State **Dst, struct fish_code *code)
     if ((ret = dasm_encode(Dst, code->buffer)) != 0)
     {
         fprintf(stderr, "Could not encode instructions: dasm_encode returned "
-                        "%d\n", ret);
+                        "%d\n",
+                ret);
         exit(EXIT_FAILURE);
     }
 
@@ -61,7 +61,8 @@ void fish_link_and_encode(dasm_State **Dst, struct fish_code *code)
 }
 
 /* free DynASM state and other compiler structures */
-void fish_free_compiler(dasm_State **Dst, struct fish_state *seen_states)
+void
+fish_free_compiler(dasm_State **Dst, struct fish_state *seen_states)
 {
     /* free DynASM state */
     dasm_free(Dst);
@@ -75,7 +76,8 @@ void fish_free_compiler(dasm_State **Dst, struct fish_state *seen_states)
     }
 }
 
-void fish_free_code(struct fish_code *code)
+void
+fish_free_code(struct fish_code *code)
 {
     if (munmap(code->buffer, code->size) == -1)
     {
@@ -86,8 +88,8 @@ void fish_free_code(struct fish_code *code)
     free(code);
 }
 
-struct fish_code *fish_compile(struct fish_codebox *codebox,
-                               struct fish_state state)
+struct fish_code *
+fish_compile(struct fish_codebox *codebox, struct fish_state state)
 {
     /* setup DynASM state */
     dasm_State *dasm_state;
@@ -180,24 +182,19 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
 
         switch (instr)
         {
-            case '>':
-                /* right */
+            case '>': /* right */
                 state.direction = RIGHT;
                 break;
-            case '<':
-                /* left */
+            case '<': /* left */
                 state.direction = LEFT;
                 break;
-            case '^':
-                /* up */
+            case '^': /* up */
                 state.direction = UP;
                 break;
-            case 'v':
-                /* down */
+            case 'v': /* down */
                 state.direction = DOWN;
                 break;
-            case '/':
-                /* right <-> up, left <-> down */
+            case '/': /* right <-> up, left <-> down */
                 switch (state.direction)
                 {
                     case RIGHT:
@@ -217,8 +214,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                         break;
                 }
                 break;
-            case '\\':
-                /* right <-> down, left <-> up */
+            case '\\': /* right <-> down, left <-> up */
                 switch (state.direction)
                 {
                     case RIGHT:
@@ -238,8 +234,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                         break;
                 }
                 break;
-            case '|':
-                /* right <-> left */
+            case '|': /* right <-> left */
                 switch (state.direction)
                 {
                     case RIGHT:
@@ -252,8 +247,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                         break;
                 }
                 break;
-            case '_':
-                /* up <-> down */
+            case '_': /* up <-> down */
                 switch (state.direction)
                 {
                     case UP:
@@ -266,8 +260,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                         break;
                 }
                 break;
-            case '#':
-                /* right <-> left, up <-> down */
+            case '#': /* right <-> left, up <-> down */
                 switch (state.direction)
                 {
                     case RIGHT:
@@ -287,51 +280,50 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                         break;
                 }
                 break;
-            case 'x':
-                /* random direction */
-                {
-                    struct fish_state temp_state;
+            case 'x': /* random direction */
+            {
+                struct fish_state temp_state;
 
-                    /* get rand() % 4 and pick a new direction */
-                    | call_extern rand
-                    | and r0, 0b11
-                    | cmp r0, 1
-                    | jl >1
-                    | je >2
-                    | cmp r0, 2
-                    | je >3
-                    | jmp >4
+                /* get rand() % 4 and pick a new direction */
+                | call_extern rand
+                | and r0, 0b11
+                | cmp r0, 1
+                | jl >1
+                | je >2
+                | cmp r0, 2
+                | je >3
+                | jmp >4
 
-                    |.macro setdirection, lbl
-                        |lbl:
-                        | mov aword end_state->row, temp_state.row
-                        | mov aword end_state->column, temp_state.column
-                        | mov aword end_state->direction, temp_state.direction
-                        |jmp >5
-                    |.endmacro
+                |.macro setdirection, lbl
+                    |lbl:
+                    | mov aword end_state->row, temp_state.row
+                    | mov aword end_state->column, temp_state.column
+                    | mov aword end_state->direction, temp_state.direction
+                    |jmp >5
+                |.endmacro
 
-                    temp_state = state;
-                    temp_state.direction = RIGHT;
-                    fish_next(&temp_state, codebox);
-                    | setdirection 1
-                    temp_state = state;
-                    temp_state.direction = LEFT;
-                    fish_next(&temp_state, codebox);
-                    | setdirection 2
-                    temp_state = state;
-                    temp_state.direction = UP;
-                    fish_next(&temp_state, codebox);
-                    | setdirection 3
-                    temp_state = state;
-                    temp_state.direction = DOWN;
-                    fish_next(&temp_state, codebox);
-                    | setdirection 4
+                temp_state = state;
+                temp_state.direction = RIGHT;
+                fish_next(&temp_state, codebox);
+                | setdirection 1
+                temp_state = state;
+                temp_state.direction = LEFT;
+                fish_next(&temp_state, codebox);
+                | setdirection 2
+                temp_state = state;
+                temp_state.direction = UP;
+                fish_next(&temp_state, codebox);
+                | setdirection 3
+                temp_state = state;
+                temp_state.direction = DOWN;
+                fish_next(&temp_state, codebox);
+                | setdirection 4
 
-                    |5:
+                |5:
 
-                    state.direction = FINISHED;
-                }
+                state.direction = FINISHED;
                 break;
+            }
             case '.':
                 | instr_goto
                 state.direction = FINISHED;
@@ -345,8 +337,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
             case '6':
             case '7':
             case '8':
-            case '9':
-                /* push values 0-9 */
+            case '9': /* push values 0-9 */
                 | mov qword [r_stacktop], instr-'0'
                 | mov byte [r_stacktop+8], INTEGER
                 | fish_inc_stack 1
@@ -356,8 +347,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
             case 'c':
             case 'd':
             case 'e':
-            case 'f':
-                /* push values 10-15 */
+            case 'f': /* push values 10-15 */
                 | mov qword [r_stacktop], instr-'a'+10
                 | mov byte [r_stacktop+8], INTEGER
                 | fish_inc_stack 1
@@ -387,30 +377,27 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 | instr_gt
                 break;
             case '"':
-            case '\'':
+            case '\'': /* string mode - read entire string and push it */
+            {
+                char *string = fish_read_string(&state, codebox);
+                size_t i = 0;
+                while (string[i])
                 {
-                    /* string mode - read entire string and push it */
-                    char *string = fish_read_string(&state, codebox);
-                    size_t i = 0;
-                    while (string[i])
-                    {
-                        | mov qword [r_stacktop], string[i]
-                        | mov byte [r_stacktop+8], INTEGER
-                        | fish_inc_stack 1
-                        ++i;
-                    }
-
-                    max_stack_change += i;
-
-                    free(string);
+                    | mov qword [r_stacktop], string[i]
+                    | mov byte [r_stacktop+8], INTEGER
+                    | fish_inc_stack 1
+                    ++i;
                 }
-                break;
-            case '!':
-                /* skip next instruction by adding an extra next */
+
+                max_stack_change += i;
+
+                free(string);
+            }
+            break;
+            case '!': /* skip next instruction by adding an extra next */
                 fish_next(&state, codebox);
                 break;
-            case '?':
-                /* skip next instruction if popped value is zero */
+            case '?': /* skip next instruction if popped value is zero */
                 | fish_check_underflow 1
                 /* get type */
                 | cmp byte [r_stacktop-1], INTEGER
@@ -439,7 +426,8 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
 
                     fish_number next_instr = fish_peek_next(codebox, state);
 
-                    if (strchr("0123456789abcdef+-*,%=():~$@onigp;", next_instr))
+                    if (strchr("0123456789abcdef+-*,%=():~$@onigp;",
+                               next_instr))
                     {
                         /* for these simple instructions, we can insert a local
                          * label and jump to it conditionally */
@@ -477,8 +465,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                     }
                 }
                 break;
-            case '~':
-                /* pop and discard a value */
+            case '~': /* pop and discard a value */
                 | fish_check_underflow, 1
                 | fish_dec_stack, 1
                 break;
@@ -491,26 +478,22 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
             case '@':
                 | instr_rot
                 break;
-            case 'r':
-                /* reverse stack */
+            case 'r': /* reverse stack */
                 | mov stack->num_items, r_stacknum
                 | prepcall1 r_stack
                 | call_extern fish_reverse_stack
                 break;
-            case '{':
-                /* shift stack left */
+            case '{': /* shift stack left */
                 | mov stack->num_items, r_stacknum
                 | prepcall1 r_stack
                 | call_extern fish_shift_left
                 break;
-            case '}':
-                /* shift stack right */
+            case '}': /* shift stack right */
                 | mov stack->num_items, r_stacknum
                 | prepcall1 r_stack
                 | call_extern fish_shift_right
                 break;
-            case 'l':
-                /* push stack size */
+            case 'l': /* push stack size */
                 | mov qword [r_stacktop], r_stacknum
                 | mov byte [r_stacktop+8], INTEGER
                 | fish_inc_stack 1
@@ -521,8 +504,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
             case 'o':
                 | instr_output
                 break;
-            case 'n':
-                /* pop a value and output a character */
+            case 'n': /* pop a value and output a character */
                 | fish_check_underflow 1
                 | fish_dec_stack 1
                 | cmp byte [r_stacktop+8], INTEGER
@@ -538,8 +520,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                 |2:
                 | call_extern printf
                 break;
-            case 'i':
-                /* push a character from standard input */
+            case 'i': /* push a character from standard input */
                 | call_extern getchar
                 /* check for EOF */
                 switch (sizeof(int))
@@ -564,8 +545,7 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
             case 'g':
                 | instr_get
                 break;
-            case ';':
-                /* end program */
+            case ';': /* end program */
                 | mov aword end_state->direction, FINISHED
                 | xor r_ret, r_ret
                 | jmp ->epilogue
@@ -575,11 +555,9 @@ struct fish_code *fish_compile(struct fish_codebox *codebox,
                     state.direction = FINISHED;
 
                 break;
-            case ' ':
-                /* no-op */
+            case ' ': /* no-op */
                 break;
-            default:
-                /* syntax error */
+            default: /* syntax error */
                 fish_free_compiler(Dst, seen_states);
                 return NULL;
         }

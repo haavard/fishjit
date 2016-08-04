@@ -1,6 +1,8 @@
 #ifndef FISH_RUNTIME_H
 #define FISH_RUNTIME_H
 
+struct fish_stack;
+
 /* reverse stack ('r' instruction) */
 void fish_reverse_stack(struct fish_stack *stack);
 

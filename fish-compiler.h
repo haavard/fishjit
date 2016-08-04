@@ -1,9 +1,11 @@
 #ifndef FISH_COMPILER_H
 #define FISH_COMPILER_H
 
-#include "dasm_proto.h"
+#include <stddef.h>
 
-#include "fish-stack.h"
+struct fish_codebox;
+struct fish_stack;
+struct fish_state;
 
 struct fish_code
 {
