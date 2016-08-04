@@ -5,3 +5,5 @@
                                               vr" ,erom emos yub ,erots eht ot oG"<
                                               > l?!vof3*1+5.
                                                    >4b9**faa++1.
+
+https://fishlanguage.com/playground/hkEYdySqDAtG6HeC3

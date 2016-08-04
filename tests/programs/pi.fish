@@ -3,3 +3,5 @@
       ~v      <  \, <~v?          <:-3l+1f /
       \>l2(?v+^     ~ >&f1+*&1-:v
             >n;     \ ^?        /
+
+https://fishlanguage.com/playground/6px7cXAwC5ZNbR5PL
