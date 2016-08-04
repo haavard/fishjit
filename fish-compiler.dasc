@@ -14,7 +14,7 @@
 
 /* used by 'n' instruction to invoke printf */
 static char *format_int = "%ld";
-static char *format_float = "%f";
+static char *format_float = "%.16g";
 
 #ifdef DEBUG
 static char *format_instr = " Instruction: '%c', stack: ";
