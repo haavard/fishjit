@@ -1,8 +1,8 @@
 fishjit
 =======
 fishjit is a just-in-time compiler for the [><>][1] esoteric programming
-language. It is written in C using the [DynASM][2] dynamic assembler.
-Currently only supports the amd64 architecture on Linux.
+language. It is written in C using [DynASM][2] for emitting code. Currently
+only supports the amd64 architecture on Linux.
 
 Known limitations:
  - No i386 support
@@ -14,8 +14,9 @@ Installation
 ------------
 [![Build Status](https://travis-ci.com/haavardp/fishjit.svg?token=q1REyqE9bXXeo3BE68D1&branch=master)](https://travis-ci.com/haavardp/fishjit)
 
-fishjit requires the [uthash][3] library. DynASM is included via a git
-submodule.
+fishjit requires the [uthash][3] library and [LuaJIT][4] (or possibly plain
+Lua with the [BitOp extension][5]) when building. Bash is required for running
+tests.
 
     $ git clone https://github.com/haavardp/fishjit.git
     $ cd fishjit
@@ -32,6 +33,8 @@ Example
      >l?!;o
     $ fishjit helloworld.fish
     hello, world
+
+More examples can be found under the "tests" directory.
 
 License
 -------
@@ -52,3 +55,5 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 [1]: https://esolangs.org/wiki/Fish
 [2]: http://luajit.org/dynasm.html
 [3]: https://troydhanson.github.io/uthash/
+[4]: http://luajit.org/
+[5]: http://bitop.luajit.org/
