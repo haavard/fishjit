@@ -286,7 +286,7 @@ fish_compile(struct fish_codebox *codebox, struct fish_state state)
 
                 /* get rand() % 4 and pick a new direction */
                 | call_extern rand
-                | and r0, 0b11
+                | and r0, 3
                 | cmp r0, 1
                 | jl >1
                 | je >2
