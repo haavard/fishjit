@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 set -o nounset
+shopt -s nullglob
+shopt -s globstar
 
 test_target=$1
 tests_dir=$2
@@ -22,7 +24,7 @@ timeout_after=0.5
 # Iterate over every *.fish, executing with input from *.stdin (if it exists).
 # The standard output and error of the script are then compared to *.stdout
 # and *.stderr, and if differences are found, that script fails the test.
-for script in $(find $tests_dir -name '*.fish')
+for script in "$tests_dir"/**/*.fish
 do
     (( test_count++ ))
 
