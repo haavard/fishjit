@@ -9,7 +9,7 @@
 #define CODEBOX_HEIGHT 256
 
 /* fish number datatype */
-typedef char fish_number;
+typedef int64_t fish_number;
 
 /* instruction pointer direction; FINISHED denotes execution stopped */
 enum fish_direction

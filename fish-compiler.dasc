@@ -365,7 +365,7 @@ fish_compile(struct fish_codebox *codebox, struct fish_state state)
             case '"':
             case '\'': /* string mode - read entire string and push it */
             {
-                char *string = fish_read_string(&state, codebox);
+                fish_number *const string = fish_read_string(&state, codebox);
                 size_t i = 0;
                 while (string[i])
                 {
