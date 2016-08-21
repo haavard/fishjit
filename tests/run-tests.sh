@@ -28,7 +28,7 @@ function compare_output() {
     output_file="$3"
     expected_file="$4"
 
-    diff_out="$(diff --unified=2 --new-file "$expected_file" "$output_file")"
+    diff_out="$(diff --text --unified=2 --new-file "$expected_file" "$output_file")"
     if [ $? -ne 0 ]; then
         echo -e "${c_red}[Fail]${c_clear} wrong $out_name for $test_name"
         echo "$diff_out"
