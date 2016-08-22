@@ -366,6 +366,12 @@ fish_compile(struct fish_codebox *codebox, struct fish_state state)
             case '\'': /* string mode - read entire string and push it */
             {
                 fish_number *const string = fish_read_string(&state, codebox);
+                if (string == NULL)
+                {
+                    fish_free_compiler(Dst, seen_states);
+                    return NULL;
+                }
+
                 size_t i = 0;
                 while (string[i])
                 {

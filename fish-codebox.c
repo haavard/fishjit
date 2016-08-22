@@ -54,10 +54,7 @@ fish_number *fish_read_string(struct fish_state *state,
     size_t buffer_size = 64;
     fish_number *string = malloc(buffer_size * sizeof(fish_number));
     if (!string)
-    {
-        perror("malloc");
-        exit(EXIT_FAILURE);
-    }
+        return NULL;
 
     /* move to first character in string */
     fish_next(state, codebox);
@@ -83,8 +80,7 @@ fish_number *fish_read_string(struct fish_state *state,
             if (!new_string)
             {
                 free(string);
-                perror("realloc");
-                exit(EXIT_FAILURE);
+                return NULL;
             }
             string = new_string;
         }
